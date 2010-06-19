@@ -51,7 +51,7 @@ master_project_dir = ARGV.shift or nil
 # since the .vcproj multi-configuration environment has some settings
 # that can be specified per-configuration (target type [lib/exe], include directories)
 # but where CMake unfortunately does _NOT_ offer a configuration-specific equivalent,
-# we need to fall back to using the globally-scoped CMake commands.
+# we need to fall back to using the globally-scoped CMake commands (include_directories() etc.).
 # But at least let's allow the user to precisely specify which configuration
 # (empty [first config], "Debug", "Release", ...) he wants to have
 # these settings taken from.
@@ -534,6 +534,7 @@ File.open(output_file, "w") { |out|
       puts_ind(out, "# ./cmake/vcproj2cmake/hook_project.txt, and other hook include variables below).")
       puts_ind(out, "# NOTE: it usually should also reset variables V2C_LIBS, V2C_SOURCES etc.")
       puts_ind(out, "# as used below since they should contain directory-specific contents only, not accumulate!")
+      # (side note: see "ldd -u -r" on Linux for superfluous link parts potentially caused by this!)
       puts_ind(out, "include(MasterProjectDefaults_vcproj2cmake OPTIONAL)")
 
       puts_ind(out, "# hook e.g. for invoking Find scripts as expected by")
@@ -732,8 +733,6 @@ File.open(output_file, "w") { |out|
             }
             map_dependencies = Hash.new()
             read_mappings_combined(filename_map_dep, map_dependencies)
-            # TODO: we probably should reset V2C_LIBS at the beginning of every CMakeLists.txt
-            # (see "ldd -u -r" on Linux for superfluous link parts)
             arr_dependencies.push("${V2C_LIBS}")
             cmake_write_build_attributes("target_link_libraries", "", out, arr_dependencies, map_dependencies, project_name)
 
@@ -798,4 +797,3 @@ File.open(output_file, "w") { |out|
 }
 
 puts "Wrote #{output_file}"
-
