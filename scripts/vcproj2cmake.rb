@@ -762,6 +762,9 @@ File.open(output_file, "w") { |out|
         # Make sure to keep CMake Name/Keyword (PROJECT_LABEL / VS_KEYWORD properties) in our conversion, too...
 	# Hrmm, both project() _and_ PROJECT_LABEL reference the same project_name?? WEIRD.
 	out.puts
+	# no need to enclose this within "if(TARGET ...)" here since at this point
+	# we really _should_ have a target available,
+	# otherwise everything is broken anyway...
 	cmake_set_target_property(target, "PROJECT_LABEL", project_name, out)
 	project_keyword = project.attributes["Keyword"]
         if not project_keyword.nil?
