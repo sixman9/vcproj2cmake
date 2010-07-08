@@ -1,27 +1,40 @@
 #!/usr/bin/ruby
 
+require 'fileutils'
 require 'find'
 require 'pathname'
+
+# load common settings
+$LOAD_PATH.unshift(File.dirname(__FILE__)) 
+load 'vcproj2cmake_settings.rb'
+
 script_fqpn = File.expand_path $0
 script_path = Pathname.new(script_fqpn).parent
 source_root = Dir.pwd
-v2c_config_dir_local = "./cmake/vcproj2cmake"
+
+if not File.exist?($v2c_config_dir_local)
+  FileUtils.mkdir_p $v2c_config_dir_local
+end
 
 time_cmake_root_folder = 0
 arr_excl_proj = Array.new()
-if File.exist?(v2c_config_dir_local)
-  time_cmake_root_folder = File.stat(v2c_config_dir_local).mtime.to_i
-  excluded_projects = "#{v2c_config_dir_local}/project_exclude_list.txt"
-  if File.exist?(excluded_projects)
-    File.new(excluded_projects, 'r').each do |line|
-      # TODO: we probably need a per-platform implementation,
-      # since exclusion is most likely per-platform after all
-      arr_excl_proj.push(line)
-    end
+time_cmake_root_folder = File.stat($v2c_config_dir_local).mtime.to_i
+excluded_projects = "#{$v2c_config_dir_local}/project_exclude_list.txt"
+if File.exist?(excluded_projects)
+  File.new(excluded_projects, 'r').each do |line|
+    # TODO: we probably need a per-platform implementation,
+    # since exclusion is most likely per-platform after all
+    arr_excl_proj.push(line)
   end
 end
 
-projlistfile = File.new("#{v2c_config_dir_local}/all_sub_projects.txt", "w+")
+# FIXME: should _split_ operation between _either_ scanning entire .vcproj hierarchy into a
+# all_sub_projects.txt, _or_ converting all sub .vcproj as listed in an existing all_sub_projects.txt file.
+# (provide suitable command line switches)
+# Hmm, or perhaps port _everything_ back into vcproj2cmake.rb,
+# providing --recursive together with --scan or --convert switches for all_sub_projects.txt generation or use.
+
+projlistfile = File.new("#{$v2c_config_dir_local}/all_sub_projects.txt", "w+")
 
 Find.find('./') do
   |f|
@@ -94,8 +107,8 @@ Find.find('./') do
           # FIXME: doesn't really seem to work... yet?
           time_proj = File.stat("#{f}/#{projfile}").mtime.to_i
           time_cmake_folder = 0
-          if File.exist?("#{f}/#{v2c_config_dir_local}")
-            time_cmake_folder = File.stat("#{f}/#{v2c_config_dir_local}").mtime.to_i
+          if File.exist?("#{f}/#{$v2c_config_dir_local}")
+            time_cmake_folder = File.stat("#{f}/#{$v2c_config_dir_local}").mtime.to_i
           end
           time_CMakeLists = File.stat("#{f}/CMakeLists.txt").mtime.to_i
           #puts "TIME: CMakeLists #{time_CMakeLists} proj #{time_proj} cmake_folder #{time_cmake_folder} cmake_root_folder #{time_cmake_root_folder}"
