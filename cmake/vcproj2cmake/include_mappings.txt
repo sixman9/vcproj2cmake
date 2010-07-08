@@ -1,0 +1,6 @@
+.*/Extern/Boost.*:=${Boost_INCLUDE_DIRS}
+.*/Extern/cairo/include/cairo:WIN32|UNIX=${Cairo_INCLUDE_DIRS}
+.*/Extern/curl/include:=${CURL_INCLUDE_DIRS}
+.*/Extern/iconv/include:WIN32|UNIX=${ICONV_INCLUDE_DIRS}
+.*/Extern/libxml2/include/libxml2:WIN32|UNIX=${LIBXML2_INCLUDE_DIR}
+.*/Extern/Microsoft.*:WIN32

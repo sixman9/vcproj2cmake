@@ -1,0 +1,10 @@
+# some nice code at the very end of the main (root) project,
+# to collect all Find operations that did not succeed.
+
+get_property(pkg_not_found GLOBAL
+  PROPERTY PACKAGES_NOT_FOUND)
+
+if(pkg_not_found)
+  # hmm, perhaps make use of FeatureSummary.cmake?
+  message("Note: some packages have not been found: ${pkg_not_found}")
+endif(pkg_not_found)

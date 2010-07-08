@@ -1,0 +1,66 @@
+###########################################################################
+# Windows libraries (please always reference as lower-case name in original .vcproj)
+advapi32:WIN32|UNIX=${WIN32_LIBRARIES}
+comdlg32:WIN32|UNIX=${WIN32_LIBRARIES}
+ddraw:WIN32|UNIX=${WIN32_LIBRARIES}
+gdi32:WIN32|UNIX=${WIN32_LIBRARIES}
+gdiplus:WIN32|UNIX=${WIN32_LIBRARIES}
+glu32:=${OPENGL_glu_LIBRARY}
+htmlhelp:WIN32|UNIX=${WIN32_LIBRARIES}
+kernel32:WIN32|UNIX=${WIN32_LIBRARIES}
+mfcs80:WIN32|UNIX=${WIN32_LIBRARIES}
+mfcs80d:WIN32|UNIX=${WIN32_LIBRARIES}
+mpr:WIN32|UNIX=${WIN32_LIBRARIES}
+msimg32:WIN32|UNIX=${WIN32_LIBRARIES}
+msvcrt:WIN32|UNIX=${WIN32_LIBRARIES}
+nddeapi:WIN32|UNIX=${WIN32_LIBRARIES}
+netapi32:WIN32|UNIX=${WIN32_LIBRARIES}
+odbc32:WIN32|UNIX=${ODBC_LIBRARIES}
+odbccp32:WIN32|UNIX=${ODBC_LIBRARIES}
+ole32:WIN32|UNIX=${WIN32_LIBRARIES}
+oleaut32:WIN32|UNIX=${WIN32_LIBRARIES}
+opengl32:=${OPENGL_gl_LIBRARY}
+rpcrt4:WIN32|UNIX=${WIN32_LIBRARIES}
+setupapi:WIN32|UNIX=${WIN32_LIBRARIES}
+shell32:WIN32|UNIX=${WIN32_LIBRARIES}
+user32:WIN32|UNIX=${WIN32_LIBRARIES}
+uuid:WIN32|UNIX=${WIN32_LIBRARIES}
+version:WIN32|UNIX=${WIN32_LIBRARIES}
+wininet:WIN32|UNIX=${WIN32_LIBRARIES}
+winmm:WIN32|UNIX=${WIN32_LIBRARIES}
+winspool:WIN32|UNIX=${WIN32_LIBRARIES}
+###########################################################################
+# third-party libraries
+dynapdf:WIN32
+###########################################################################
+# translate "Internet project" components into their related Findxxx.cmake
+# macro's ${xxx_LIBRARIES} string.
+cairo:=${Cairo_LIBRARIES}
+iconv:=${ICONV_LIBRARIES}
+libboost_filesystem-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
+libboost_filesystem-vc80-mt-1_34:=${Boost_LIBRARIES}
+libboost_regex-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
+libboost_regex-vc80-mt-1_34:=${Boost_LIBRARIES}
+libboost_signals-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
+libboost_signals-vc80-mt-1_34:=${Boost_LIBRARIES}
+libboost_system-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
+libboost_system-vc80-mt-1_34:=${Boost_LIBRARIES}
+libboost_thread-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
+libboost_thread-vc80-mt-1_34:=${Boost_LIBRARIES}
+libboost_wserialization-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
+libboost_wserialization-vc80-mt-1_34:=${Boost_LIBRARIES}
+libcurl:=${CURL_LIBRARIES}
+libpng:=${PNG_LIBRARIES}
+libxml2:=${LIBXML2_LIBRARIES}
+zdll:=${ZLIB_LIBRARIES}
+###########################################################################
+# Application-specific libraries
+# foo library is Win32-only
+foo:WIN32
+###########################################################################
+# translation of project-specific libraries from their debug-postfix _names_ to actual _target_ expression
+bar:WIN32
+bar_d:WIN32=bar
+baz_u:WIN32=baz
+baz_ud:WIN32=baz
+barf_d:=barf

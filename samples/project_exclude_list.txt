@@ -1,0 +1,6 @@
+.*\bintegration-test\b.*
+.*\bModuleTest\b.*
+.*\bunittest\b.*
+.*\bUnitTest\b.*
+drivers.*
+AwfulPlatformProj.*
