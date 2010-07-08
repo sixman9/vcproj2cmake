@@ -5,13 +5,13 @@ require 'pathname'
 script_fqpn = File.expand_path $0
 script_path = Pathname.new(script_fqpn).parent
 source_root = Dir.pwd
-v2c_config_dir = "./cmake/vcproj2cmake"
+v2c_config_dir_local = "./cmake/vcproj2cmake"
 
 time_cmake_root_folder = 0
 arr_excl_proj = Array.new()
-if File.exist?(v2c_config_dir)
-  time_cmake_root_folder = File.stat(v2c_config_dir).mtime.to_i
-  excluded_projects = "#{v2c_config_dir}/project_exclude_list.txt"
+if File.exist?(v2c_config_dir_local)
+  time_cmake_root_folder = File.stat(v2c_config_dir_local).mtime.to_i
+  excluded_projects = "#{v2c_config_dir_local}/project_exclude_list.txt"
   if File.exist?(excluded_projects)
     File.new(excluded_projects, 'r').each do |line|
       # TODO: we probably need a per-platform implementation,
@@ -21,7 +21,7 @@ if File.exist?(v2c_config_dir)
   end
 end
 
-projlistfile = File.new("#{v2c_config_dir}/all_sub_projects.txt", "w+")
+projlistfile = File.new("#{v2c_config_dir_local}/all_sub_projects.txt", "w+")
 
 Find.find('./') do
   |f|
@@ -94,8 +94,8 @@ Find.find('./') do
           # FIXME: doesn't really seem to work... yet?
           time_proj = File.stat("#{f}/#{projfile}").mtime.to_i
           time_cmake_folder = 0
-          if File.exist?("#{f}/#{v2c_config_dir}")
-            time_cmake_folder = File.stat("#{f}/#{v2c_config_dir}").mtime.to_i
+          if File.exist?("#{f}/#{v2c_config_dir_local}")
+            time_cmake_folder = File.stat("#{f}/#{v2c_config_dir_local}").mtime.to_i
           end
           time_CMakeLists = File.stat("#{f}/CMakeLists.txt").mtime.to_i
           #puts "TIME: CMakeLists #{time_CMakeLists} proj #{time_proj} cmake_folder #{time_cmake_folder} cmake_root_folder #{time_cmake_root_folder}"

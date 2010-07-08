@@ -42,8 +42,8 @@ include FileUtils::Verbose
 
 # Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]
 
-filename = ARGV.shift
-output_file = ARGV.shift or output_file = File.join(File.dirname(filename), "CMakeLists.txt")
+vcproj_filename = ARGV.shift
+output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), "CMakeLists.txt")
 master_project_dir = ARGV.shift or nil
 
 ### USER-CONFIGURABLE SECTION ###
@@ -59,10 +59,10 @@ config_multi_authoritative = ""
 
 # local config directory as created in every project which needs specific settings
 # (possibly required in root project space only)
-v2c_config_dir = "./cmake/vcproj2cmake"
-filename_map_inc = "#{v2c_config_dir}/include_mappings.txt"
-filename_map_def = "#{v2c_config_dir}/define_mappings.txt"
-filename_map_dep = "#{v2c_config_dir}/dependency_mappings.txt"
+v2c_config_dir_local = "./cmake/vcproj2cmake"
+filename_map_inc = "#{v2c_config_dir_local}/include_mappings.txt"
+filename_map_def = "#{v2c_config_dir_local}/define_mappings.txt"
+filename_map_dep = "#{v2c_config_dir_local}/dependency_mappings.txt"
 
 $myindent = 0
 
@@ -475,7 +475,7 @@ File.open(output_file, "w") { |out|
   out.puts "  endif(POLICY CMP0011)"
   out.puts "endif(COMMAND cmake_policy)"
 
-  File.open(filename) { |io|
+  File.open(vcproj_filename) { |io|
     doc = REXML::Document.new io
 
     # try to point to cmake/Modules of the topmost directory of the vcproj2cmake conversion tree.
@@ -483,21 +483,24 @@ File.open(output_file, "w") { |out|
       # Urps, cannot use PROJECT_SOURCE_DIR here since we do not _have_ a local project yet...
       module_path_element = "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/Modules"
     else
-      module_path_element = "#{master_project_dir}/cmake/Modules"
+      module_path_element = "\"#{master_project_dir}/cmake/Modules\""
     end
 
-    # NOTE: could be problematic to _append_ new paths, should perhaps prepend them
+    # NOTE: use set() instead of list(APPEND...) to prepend path
     # (otherwise not able to provide proper overrides)
-    new_puts_ind(out, "list(APPEND CMAKE_MODULE_PATH #{module_path_element})")
+    new_puts_ind(out, "set(CMAKE_MODULE_PATH #{module_path_element} ${CMAKE_MODULE_PATH})")
 
-    # "export" our internal v2c_config_dir variable (to be able to reference it in CMake scripts as well)
-    new_puts_ind(out, "set(V2C_CONFIG_DIR #{v2c_config_dir})")
+    # "export" our internal v2c_config_dir_local variable (to be able to reference it in CMake scripts as well)
+    new_puts_ind(out, "set(V2C_CONFIG_DIR_LOCAL \"#{v2c_config_dir_local}\")")
+
+    new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake definitions")
+    puts_ind(out, "include(vcproj2cmake_defs)")
 
     # this CMakeLists.txt-global optional include could be used e.g.
     # to skip the entire build of this file on certain platforms:
     # if(PLATFORM) message(STATUS "not supported") return() ...
     # (note that we appended CMAKE_MODULE_PATH _prior_ to this include()!)
-    new_puts_ind(out, "include(${V2C_CONFIG_DIR}/hook_pre.txt OPTIONAL)")
+    new_puts_ind(out, "include(${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt OPTIONAL)")
 
     doc.elements.each("VisualStudioProject") { |project|
 
@@ -800,3 +803,4 @@ File.open(output_file, "w") { |out|
 }
 
 puts "Wrote #{output_file}"
+puts "Finished. You might want to make sure to have important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH"
