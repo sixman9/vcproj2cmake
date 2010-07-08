@@ -9,14 +9,14 @@ Usage (very rough summary):
 - upon success, in that dir, run "mkdir build_toolkit1_v2.4_unicode_debug"
 - copy all required cmake/Modules, cmake/vcproj2cmake and samples to their respective paths in your project
 - cd build_toolkit1_v2.4_unicode_debug
-- cmake ..
+- cmake .. (alternatively: ccmake ..)
 - make -j3 -k
 
 
 NOTE: first thing to state is:
 if you do not have any users who are hooked on keep using
 their static .vcproj files on Visual Studio, then it perhaps makes less sense
-to use our converter as a somewhat more cumbersome online converter solution
+to use our converter as a somewhat more cumbersome _online converter_ solution
 - instead you may choose to go for a full-scale manual conversion
 to CMakeLists.txt files (by basing your initial CMakeLists.txt layout
 on the output of our script, too, of course).
@@ -26,15 +26,18 @@ CMakeLists.txt files directly wherever needed (since _they_ are now your
 authoritative project information, instead of the static .vcproj files).
 
 OTOH by using our scripts for one-time-conversion only, you will lose out
-on any improvements done to our online conversion script in the future
+on any of the hopefully substantial improvements done to our
+online conversion script in the future
 (such as automagically provided installation/packaging configuration mechanisms, ...),
 thus it's a tough initial decision to make on whether to maintain an online conversion
-infrastructure or to go initial-convert only.
+infrastructure or to go initial-convert only and thus run _all_ sides on a CMake-based
+setup.
 
 
 
 ===============================================================================
 Explanation of core concepts:
+
 
 === Hook script includes ===
 
@@ -42,16 +45,20 @@ In the generated CMakeLists.txt file(s), you may notice lines like
 include(${V2C_HOOK_PROJECT} OPTIONAL)
 These are meant to provide interception points ("hooks") to enhance online-converted
 CMakeLists.txt with specific static content (e.g. to call required CMake Find scripts,
-or to override some undesireable .vcproj choices, etc.).
+or to override some undesireable .vcproj choices, to provide some user-facing
+CMake setup cache variables, etc.).
 One could just as easily have written this line like
 include(cmake/vcproj2cmake/hook_project.txt OPTIONAL)
 , but then it would be somewhat less flexible (some environments might want to
-temporarily disable use of these included scripts).
-Note that variables like V2C_HOOK_PROJECT are defined by our
+temporarily disable use of these included scripts, by changing the variable
+to a different/inexistent script).
+Note that these required variables like V2C_HOOK_PROJECT are pre-defined by our
 vcproj2cmake_defs.cmake module.
+
 
 Example hook scripts to be used by every sub project in your project hierarchy that needs
 such customizations are provided in our repository's sample/ directory.
+
 
 === mappings files (definitions, dependencies, includes) ===
 
@@ -68,7 +75,7 @@ Basic syntax of mappings files is:
 
 Original expression as used by the static Windows side (.vcproj content)
 - note case sensitivity! -,
-then ':' as separator,
+then ':' as separator between original content and CMake-side mappings,
 then a platform-specific identifier (WIN32, APPLE, ...) which is used
   in a CMake "if(...)" conditional (or no identifier in case the mapping
   is supposed to be platform-universal),
@@ -81,6 +88,13 @@ Note that ideally you merely needs to centrally maintain mappings in your root p
 (ROOT_PROJECT/cmake/vcproj2cmake/*_mappings.txt), since sub projects will also
 collect information from the root project in addition to their (optional) local mappings files.
 
+
+
+Installation/packaging of a vcproj2cmake-based project is not specially supported yet,
+however I'm currently in the process of setting packaging up locally,
+thus hopefully this will eventually result in a nicely generic, easily usable
+(and optionally overridable!) mechanism which provides a nice Bundle-like
+packaging functionality on all platforms.
 
 
 
