@@ -53,7 +53,7 @@ vcproj_filename = ARGV.shift
 output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), "CMakeLists.txt")
 # adopt master (root) project dir, else assume it to be the current project
 # in case of simple single-.vcproj conversions
-master_project_dir = ARGV.shift or "."
+$master_project_dir = ARGV.shift or "."
 
 
 ### USER-CONFIGURABLE SECTION ###
@@ -500,7 +500,7 @@ File.open(tmpfile.path, "w") { |out|
     # This also contains vcproj2cmake helper modules (these should - just like the CMakeLists.txt -
     # be within the project tree as well, since someone might want to copy the entire project tree
     # including .vcproj conversions to a different machine, thus all v2c components should be available)
-    module_path_element = "\"#{master_project_dir}/#{$v2c_module_path_local}\""
+    module_path_element = "\"#{$master_project_dir}/#{$v2c_module_path_local}\""
 
     # NOTE: use set() instead of list(APPEND...) to prepend path
     # (otherwise not able to provide proper overrides)
@@ -816,7 +816,7 @@ File.open(tmpfile.path, "w") { |out|
           end
         end
       end # not target.nil?
-      new_puts_ind(out, "v2c_rebuild_on_update(#{project_name} \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\" ${CMAKE_CURRENT_LIST_FILE} \"#{script_name}\" \"#{master_project_dir}\")")
+      new_puts_ind(out, "v2c_rebuild_on_update(#{project_name} \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\" ${CMAKE_CURRENT_LIST_FILE} \"#{script_name}\" \"#{$master_project_dir}\")")
     }
     new_puts_ind(out, "include(${V2C_HOOK_POST} OPTIONAL)")
   }
