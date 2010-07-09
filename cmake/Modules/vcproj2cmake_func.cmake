@@ -24,8 +24,8 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
       VERBATIM
     )
 
-    #add_custom_target(${_target_name}_update_cmakelists VERBATIM SOURCES ${_cmakelists})
-    add_custom_target(${_target_name}_update_cmakelists ALL VERBATIM SOURCES ${_cmakelists})
+    #add_custom_target(${_target_name}_update_cmakelists VERBATIM DEPENDS ${_cmakelists})
+    add_custom_target(${_target_name}_update_cmakelists ALL VERBATIM DEPENDS ${_cmakelists})
 
   if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
     # make sure the rebuild happens _before_ trying to build the actual target.
