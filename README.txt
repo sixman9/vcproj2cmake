@@ -94,12 +94,15 @@ Installation/packaging of a vcproj2cmake-based project is not specially supporte
 however I'm currently in the process of setting packaging up locally,
 thus hopefully this will eventually result in a nicely generic, easily usable
 (and optionally overridable!) mechanism which provides a nice Bundle-like
-packaging functionality on all platforms.
+packaging functionality on all platforms (Mac _and_ Linux, and Windows etc.).
 
 
 
 Whenever something needs a better explanation, just tell me and I'll try to improve it.
 Dito if you think that some mechanism is poorly implemented (we're still at Alpha stage!).
+
+Despite being at Alpha stage, the converter is now more than usable enough
+to successfully build a very large project consisting of several dozen sub projects.
 
 Happy hacking,
 
