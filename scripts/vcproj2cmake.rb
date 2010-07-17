@@ -70,6 +70,7 @@ config_multi_authoritative = ""
 filename_map_inc = "#{$v2c_config_dir_local}/include_mappings.txt"
 filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
 filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
+filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
 $myindent = 0
 
@@ -750,6 +751,7 @@ File.open(tmpfile.path, "w") { |out|
               deps = linker.attributes["AdditionalDependencies"]
               if deps and deps.length > 0
                 deps.split.each { |lib|
+                  # FIXME possible to use lib = normalize(lib).strip here?
                   lib = lib.gsub(/\\/, '/')
                   arr_dependencies.push(File.basename(lib, ".lib"))
                 }
@@ -759,6 +761,22 @@ File.open(tmpfile.path, "w") { |out|
             read_mappings_combined(filename_map_dep, map_dependencies)
             arr_dependencies.push("${V2C_LIBS}")
             cmake_write_build_attributes("target_link_libraries", "", out, arr_dependencies, map_dependencies, project_name)
+
+	    arr_lib_dirs = Array.new()
+            config.elements.each('Tool[@Name="VCLinkerTool"]') { |linker|
+              lib_dirs = linker.attributes["AdditionalLibraryDirectories"]
+              if lib_dirs and lib_dirs.length > 0
+                lib_dirs.split(/[,;]/).each { |lib_dir|
+                  lib_dir = normalize(lib_dir).strip
+		  #puts "lib dir is '#{lib_dir}'"
+                  arr_lib_dirs.push(lib_dir)
+                }
+              end
+            }
+            map_lib_dirs = Hash.new()
+            read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
+            arr_lib_dirs.push("${V2C_LIB_DIRS}")
+            cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, project_name)
 
           end # not target.nil?
         end # not arr_sub_sources.empty?
@@ -803,8 +821,14 @@ File.open(tmpfile.path, "w") { |out|
           # hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
           # NOTE: needed to clone() this string above since otherwise modifying (same) source object!!
           escape_char(scc_project_name, '"')
-          scc_local_path = project.attributes["SccLocalPath"].clone
-          scc_provider = project.attributes["SccProvider"].clone
+	  # hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+	  # exist, too... (one project had SccProvider missing)
+	  if not project.attributes["SccLocalPath"].nil?
+            scc_local_path = project.attributes["SccLocalPath"].clone
+	  end
+	  if not project.attributes["SccProvider"].nil?
+            scc_provider = project.attributes["SccProvider"].clone
+	  end
 	  out.puts
 	  cmake_set_target_property(target, "VS_SCC_PROJECTNAME", scc_project_name, out)
           if scc_local_path

@@ -60,12 +60,12 @@ Example hook scripts to be used by every sub project in your project hierarchy t
 such customizations are provided in our repository's sample/ directory.
 
 
-=== mappings files (definitions, dependencies, includes) ===
+=== mappings files (definitions, dependencies, library directories, include directories) ===
 
 Certain compiler defines might be Win32-only, and certain other defines might need
 a different replacement on a certain other platform.
 
-Dito with library dependencies, and especially with include directories.
+Dito with library dependencies, and especially with include and library directories.
 
 This is what vcproj2cmake's mappings file mechanism is meant to solve
 (see cmake/vcproj2cmake/include_mappings.txt etc.).
