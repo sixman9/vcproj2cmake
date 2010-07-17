@@ -772,6 +772,10 @@ File.open(tmpfile.path, "w") { |out|
                   arr_lib_dirs.push(lib_dir)
                 }
               end
+	      # TODO: support AdditionalOptions! (mention via
+	      # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
+	      # depending on target type, and make sure to filter out options pre-defined by CMake platform
+	      # setup modules)
             }
             map_lib_dirs = Hash.new()
             read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
