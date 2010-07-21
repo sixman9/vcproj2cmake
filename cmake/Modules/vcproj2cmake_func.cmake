@@ -30,12 +30,16 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
       VERBATIM
     )
 
-    #add_custom_target(${_target_name}_update_cmakelists VERBATIM DEPENDS ${_cmakelists})
-    add_custom_target(${_target_name}_update_cmakelists ALL VERBATIM DEPENDS ${_cmakelists})
+    # NOTE: we use update_cmakelists_[TARGET] names instead of [TARGET]_...
+    # since in certain IDEs these peripheral targets will end up as user-visible folders
+    # and we want to keep them darn out of sight via suitable sorting!
+    set(target_update_cmakelists update_cmakelists_${_target_name})
+    #add_custom_target(${target_update_cmakelists} VERBATIM DEPENDS ${_cmakelists})
+    add_custom_target(${target_update_cmakelists} ALL VERBATIM DEPENDS ${_cmakelists})
 
     if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
       # make sure the rebuild happens _before_ trying to build the actual target.
-      add_dependencies(${_target_name} ${_target_name}_update_cmakelists)
+      add_dependencies(${_target_name} ${target_update_cmakelists})
     endif(TARGET ${_target_name})
 
 # FIXME!!: we should definitely achieve aborting build process directly
