@@ -9,6 +9,7 @@ if(V2C_FUNC_DEFINED)
 endif(V2C_FUNC_DEFINED)
 set(V2C_FUNC_DEFINED true)
 
+
 # Function to automagically rebuild our converted CMakeLists.txt
 # by the original converter script in case any relevant files changed.
 function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
@@ -16,8 +17,13 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
   # a rebuild somewhere for some reason
   if(NOT V2C_PREVENT_AUTOMATIC_REBUILD)
     message(STATUS "${_target_name}: installing ${_cmakelists} rebuilder (watching ${_vcproj})")
+    find_program(v2c_ruby NAMES ruby)
+    if(NOT v2c_ruby)
+      message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
+      return()
+    endif(NOT v2c_ruby)
     add_custom_command(OUTPUT ${_cmakelists}
-      COMMAND ruby ${_script} ${_vcproj} ${_cmakelists} ${_master_proj_dir}
+      COMMAND ${v2c_ruby} ${_script} ${_vcproj} ${_cmakelists} ${_master_proj_dir}
       # FIXME add any other relevant dependencies here
       DEPENDS ${_vcproj} ${_script}
       COMMENT "vcproj settings changed, rebuilding ${_cmakelists}"
@@ -27,10 +33,10 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
     #add_custom_target(${_target_name}_update_cmakelists VERBATIM DEPENDS ${_cmakelists})
     add_custom_target(${_target_name}_update_cmakelists ALL VERBATIM DEPENDS ${_cmakelists})
 
-  if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
-    # make sure the rebuild happens _before_ trying to build the actual target.
-    add_dependencies(${_target_name} ${_target_name}_update_cmakelists)
-  endif(TARGET ${_target_name})
+    if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
+      # make sure the rebuild happens _before_ trying to build the actual target.
+      add_dependencies(${_target_name} ${_target_name}_update_cmakelists)
+    endif(TARGET ${_target_name})
 
 # FIXME!!: we should definitely achieve aborting build process directly
 # after a new CMakeLists.txt has been generated (we don't want to go
