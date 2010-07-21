@@ -798,6 +798,9 @@ File.open(tmpfile.path, "w") { |out|
         $myindent -= 2
         puts_ind(out, "endif(#{build_type_condition})")
 
+        # NOTE: the commands below can stay in the general section (outside of
+        # build_type_condition above), but only since they define
+        # configuration-_specific_ settings only!
         if not target.nil?
           map_defines = Hash.new()
           read_mappings_combined(filename_map_def, map_defines)
@@ -831,8 +834,16 @@ File.open(tmpfile.path, "w") { |out|
           scc_project_name = project.attributes["SccProjectName"].clone
           # hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
           # NOTE: needed to clone() this string above since otherwise modifying (same) source object!!
-	  # ermm, why did we need that escape_char() again? _exactly_ this tweaking causes problems on generated .vcproj:s on VS2005...
-          #escape_char(scc_project_name, '"')
+          # We used to escape_char('"') below, but this was problematic
+          # on VS7 .vcproj generator since that one is BUGGY (GIT trunk
+          # 201007xx): it should escape quotes into XMLed "&quot;" yet
+          # it doesn't. Thus it's us who has to do that and pray that it
+          # won't fail on us... (but this bogus escaping within
+          # CMakeLists.txt space might lead to severe trouble
+          # with _other_ IDE generators which cannot deal with a raw "&quot;").
+          # Note that perhaps we should also escape all other chars
+          # as in CMake's EscapeForXML() method.
+          scc_project_name.gsub!(/"/, "&quot;")
 	  # hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
 	  # exist, too... (one project had SccProvider missing)
 	  if not project.attributes["SccLocalPath"].nil?
