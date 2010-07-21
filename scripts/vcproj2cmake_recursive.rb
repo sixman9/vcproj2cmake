@@ -40,6 +40,8 @@ projlistfile = File.new("#{$v2c_config_dir_local}/all_sub_projects.txt", "w+")
 
 Find.find('./') do
   |f|
+  # skip symlinks since they might be pointing _backwards_!
+  next if FileTest.symlink?(f)
   if test(?d, f)
     # skip CMake build directories! (containing CMake-generated .vcproj files!)
     # FIXME: more precise checking: check file _content_ against CMake generation!
