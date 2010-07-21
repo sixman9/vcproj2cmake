@@ -487,11 +487,15 @@ File.open(tmpfile.path, "w") { |out|
   out.puts "    cmake_policy(SET CMP0005 NEW) # automatic quoting of brackets"
   out.puts "  endif(POLICY CMP0005)"
   out.puts
-  out.puts "  # we do want the includer to be affected by our updates,"
-  out.puts "  # since it might define project-global settings."
   out.puts "  if(POLICY CMP0011)"
+  out.puts "    # we do want the includer to be affected by our updates,"
+  out.puts "    # since it might define project-global settings."
   out.puts "    cmake_policy(SET CMP0011 OLD)"
   out.puts "  endif(POLICY CMP0011)"
+  out.puts "  if(POLICY CMP0015)"
+  out.puts "    # .vcproj contains relative paths to additional library directories, thus we need to be able to cope with that"
+  out.puts "    cmake_policy(SET CMP0015 NEW)"
+  out.puts "  endif(POLICY CMP0015)"
   out.puts "endif(COMMAND cmake_policy)"
 
   File.open(vcproj_filename) { |io|
@@ -824,7 +828,8 @@ File.open(tmpfile.path, "w") { |out|
           scc_project_name = project.attributes["SccProjectName"].clone
           # hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
           # NOTE: needed to clone() this string above since otherwise modifying (same) source object!!
-          escape_char(scc_project_name, '"')
+	  # ermm, why did we need that escape_char() again? _exactly_ this tweaking causes problems on generated .vcproj:s on VS2005...
+          #escape_char(scc_project_name, '"')
 	  # hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
 	  # exist, too... (one project had SccProvider missing)
 	  if not project.attributes["SccLocalPath"].nil?
@@ -850,7 +855,12 @@ File.open(tmpfile.path, "w") { |out|
     }
     new_puts_ind(out, "include(${V2C_HOOK_POST} OPTIONAL)")
   }
+  # Close file, since Fileutils.mv on an open file will barf on XP
+  out.close
 }
+
+# make sure to close that one as well...
+tmpfile.close
 
 if File.exists?(output_file)
   mv(output_file, output_file + ".backup")
