@@ -586,7 +586,13 @@ File.open(tmpfile.path, "w") { |out|
       else
         puts "WARNING: #{project_name}: no source files at all!? (header-based project?)"
       end
-      puts_ind(out, "include(${V2C_HOOK_POST_SOURCES} OPTIONAL)")
+
+      # AFAIK .vcproj implicitly adds the project root to standard include path
+      # (for automatic stdafx.h resolution etc.), thus add this
+      # (and make sure to add it with high priority, i.e. use BEFORE).
+      new_puts_ind(out, "include_directories(BEFORE ${PROJECT_SOURCE_DIR})")
+
+      new_puts_ind(out, "include(${V2C_HOOK_POST_SOURCES} OPTIONAL)")
 
       # ARGH, we have an issue with CMake not being fully up to speed with
       # multi-configuration generators (e.g. .vcproj):
@@ -668,9 +674,6 @@ File.open(tmpfile.path, "w") { |out|
 	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc" into CMake ${MFC_INCLUDE} var
             read_mappings_combined(filename_map_inc, map_includes)
           end
-	  # AFAIK .vcproj implicitly adds the project root to standard include path
-	  # (for automatic stdafx.h resolution etc.), thus append this. TODO: revisit this!
-	  arr_includes.push("${PROJECT_SOURCE_DIR}")
           cmake_write_build_attributes("include_directories", "", out, arr_includes, map_includes, nil)
 
           if compiler.attributes["PreprocessorDefinitions"]
