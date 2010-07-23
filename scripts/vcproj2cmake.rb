@@ -169,7 +169,7 @@ def parse_platform_conversions(platform_defs, arr_defs, map_defs)
       end
     end
     if map_line.nil?
-      # no mapping? --> unconditionally use this define
+      # no mapping? --> unconditionally use the original define
       push_platform_def(platform_defs, "ALL", curr_value)
     else
       map_line.chomp.split(/\|/).each do |platform_element|
@@ -350,11 +350,10 @@ end
 
 def vc8_parse_file_list(project, vcproj_filter, files_str)
   file_group_name = vcproj_filter.attributes["Name"]
-  if not file_group_name.nil?
-    files_str[:name] = file_group_name
-  else
-    files_str[:name] = "COMMON"
+  if file_group_name.nil?
+    file_group_name = "COMMON"
   end
+  files_str[:name] = file_group_name
   puts "parsing files group #{files_str[:name]}"
 
   vcproj_filter.elements.each("Filter") { |subfilter|
