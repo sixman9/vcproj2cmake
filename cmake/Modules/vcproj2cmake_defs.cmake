@@ -1,5 +1,6 @@
 # reset common variables used by all converted CMakeLists.txt files
 set(V2C_LIBS )
+set(V2C_LIB_DIRS )
 set(V2C_SOURCES )
 
 # Pre-define hook include filenames
