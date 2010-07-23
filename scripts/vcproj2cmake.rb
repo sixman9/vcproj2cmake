@@ -715,7 +715,7 @@ File.open(tmpfile.path, "w") { |out|
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
         if not arr_sub_sources.empty?
 
-          # first add source reference, then create target
+          # first add source reference, then do linker setup, then create target
 
           new_puts_ind(out, "set(SOURCES")
           $myindent += 2
@@ -724,6 +724,40 @@ File.open(tmpfile.path, "w") { |out|
           }
           $myindent -= 2
           puts_ind(out, ")")
+
+	  # parse linker configuration...
+          arr_dependencies = Array.new()
+	  arr_lib_dirs = Array.new()
+          config.elements.each('Tool[@Name="VCLinkerTool"]') { |linker|
+            deps = linker.attributes["AdditionalDependencies"]
+            if deps and deps.length > 0
+              deps.split.each { |lib|
+                # FIXME possible to use lib = normalize(lib).strip here?
+                lib = lib.gsub(/\\/, '/')
+                arr_dependencies.push(File.basename(lib, ".lib"))
+              }
+            end
+
+            lib_dirs = linker.attributes["AdditionalLibraryDirectories"]
+            if lib_dirs and lib_dirs.length > 0
+              lib_dirs.split(/[,;]/).each { |lib_dir|
+                lib_dir = normalize(lib_dir).strip
+		  #puts "lib dir is '#{lib_dir}'"
+                arr_lib_dirs.push(lib_dir)
+              }
+            end
+	    # TODO: support AdditionalOptions! (mention via
+	    # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
+	    # depending on target type, and make sure to filter out options pre-defined by CMake platform
+	    # setup modules)
+          }
+
+	  # write link_directories() (BEFORE establishing a target!)
+          arr_lib_dirs.push("${V2C_LIB_DIRS}")
+
+          map_lib_dirs = Hash.new()
+          read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
+          cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, project_name)
 
           # FIXME: should use a macro like rosbuild_add_executable(),
           # http://www.ros.org/wiki/rosbuild/CMakeLists ,
@@ -736,58 +770,28 @@ File.open(tmpfile.path, "w") { |out|
             # TODO: perhaps for real cross-platform binaries (i.e.
             # console apps not needing a WinMain()), we should detect
             # this and not use WIN32 in this case...
-            puts_ind(out, "add_executable( #{target} WIN32 ${SOURCES} )")
+            new_puts_ind(out, "add_executable( #{target} WIN32 ${SOURCES} )")
           elsif config_type == 2    # DLL
             target = project_name
             #puts_ind(out, "add_library_vcproj2cmake( #{project_name} SHARED ${SOURCES} )")
-            puts_ind(out, "add_library( #{target} SHARED ${SOURCES} )")
+            new_puts_ind(out, "add_library( #{target} SHARED ${SOURCES} )")
           elsif config_type == 4    # Static
             target = project_name
             #puts_ind(out, "add_library_vcproj2cmake( #{project_name} STATIC ${SOURCES} )")
-            puts_ind(out, "add_library( #{target} STATIC ${SOURCES} )")
+            new_puts_ind(out, "add_library( #{target} STATIC ${SOURCES} )")
           elsif config_type == 0 # seems to be some sort of non-build logical collection project, TODO: investigate!
           elsif
             $stderr.puts "Project type #{config_type} not supported."
             exit 1
           end
 
+	  # write target_link_libraries() in case there's a target
           if not target.nil?
-            arr_dependencies = Array.new()
-            config.elements.each('Tool[@Name="VCLinkerTool"]') { |linker|
-              deps = linker.attributes["AdditionalDependencies"]
-              if deps and deps.length > 0
-                deps.split.each { |lib|
-                  # FIXME possible to use lib = normalize(lib).strip here?
-                  lib = lib.gsub(/\\/, '/')
-                  arr_dependencies.push(File.basename(lib, ".lib"))
-                }
-              end
-            }
+            arr_dependencies.push("${V2C_LIBS}")
+
             map_dependencies = Hash.new()
             read_mappings_combined(filename_map_dep, map_dependencies)
-            arr_dependencies.push("${V2C_LIBS}")
             cmake_write_build_attributes("target_link_libraries", "", out, arr_dependencies, map_dependencies, project_name)
-
-	    arr_lib_dirs = Array.new()
-            config.elements.each('Tool[@Name="VCLinkerTool"]') { |linker|
-              lib_dirs = linker.attributes["AdditionalLibraryDirectories"]
-              if lib_dirs and lib_dirs.length > 0
-                lib_dirs.split(/[,;]/).each { |lib_dir|
-                  lib_dir = normalize(lib_dir).strip
-		  #puts "lib dir is '#{lib_dir}'"
-                  arr_lib_dirs.push(lib_dir)
-                }
-              end
-	      # TODO: support AdditionalOptions! (mention via
-	      # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
-	      # depending on target type, and make sure to filter out options pre-defined by CMake platform
-	      # setup modules)
-            }
-            map_lib_dirs = Hash.new()
-            read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
-            arr_lib_dirs.push("${V2C_LIB_DIRS}")
-            cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, project_name)
-
           end # not target.nil?
         end # not arr_sub_sources.empty?
 
