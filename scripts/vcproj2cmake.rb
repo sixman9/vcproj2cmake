@@ -48,13 +48,60 @@ load 'vcproj2cmake_settings.rb'
 
 # Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]
 
-script_name = $0
-vcproj_filename = ARGV.shift
-output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), "CMakeLists.txt")
-# adopt master (root) project dir, else assume it to be the current project
-# in case of simple single-.vcproj conversions
-$master_project_dir = ARGV.shift or "."
+#*******************************************************************************************************
+# Check for command-line input errors
+# -----------------------------------
+cl_error = ""
 
+script_name = $0
+
+if ARGV.length < 1
+   cl_error = "*** Too few arguments\n"
+else
+
+   vcproj_filename = ARGV.shift
+   #puts "First arg is #{vcproj_filename}"
+
+   if File.extname(vcproj_filename) != ".vcproj"
+      # The first argument on the command-line did not have a '.vcproj' extension.
+      # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
+      # (Note:  Only '+' works here for concatenation, not '<<'.)
+      vcproj_filename = vcproj_filename + ".vcproj"
+
+      #puts "Looking for #{vcproj_filename}"
+      unless FileTest.exist?(vcproj_filename)
+         cl_error = "*** The first argument must be the Visual Studio project name\n"
+      end
+   end
+end
+
+if ARGV.length > 3
+   cl_error = cl_error << "*** Too many arguments\n"
+end
+
+unless cl_error == ""
+   puts ""
+   puts "*** Input Error *** #{script_name}"
+   puts "#{cl_error}"
+   puts ""
+   puts "Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]"
+
+   exit
+end
+
+# Process the optional command-line arguments
+# -------------------------------------------
+# FIXME:  Variables 'output_file' and 'master_project_dir' are position-dependent on the
+# command-line, if they are entered.  The script does not have a way to distinguish whether they
+# were input in the wrong order.  A potential fix is to associate flags with the arguments, like
+# '-i <input.vcproj> [-o <output CMakeLists.txt>] [-d <master project directory>]' and then parse
+# them accordingly.  This lets them be entered in any order and removes ambiguity.
+# -------------------------------------------
+output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), "CMakeLists.txt")
+
+# Master (root) project dir defaults to current dir--useful for simple, single-.vcproj conversions.
+$master_project_dir = ARGV.shift or "."
+#*******************************************************************************************************
 
 ### USER-CONFIGURABLE SECTION ###
 
