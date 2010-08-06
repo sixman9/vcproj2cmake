@@ -1,0 +1,4 @@
+For a clean and very useful cross-platform method to do library symbol exports/imports
+(a macro-based approach to wrap Windows __declspec(dllexport)
+and gcc __attribute__ ((visibility("default"))) support),
+please see http://gcc.gnu.org/wiki/Visibility
