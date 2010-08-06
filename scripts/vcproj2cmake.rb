@@ -100,7 +100,10 @@ end
 output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), "CMakeLists.txt")
 
 # Master (root) project dir defaults to current dir--useful for simple, single-.vcproj conversions.
-$master_project_dir = ARGV.shift or "."
+$master_project_dir = ARGV.shift
+if not $master_project_dir
+  $master_project_dir = "."
+end
 #*******************************************************************************************************
 
 ### USER-CONFIGURABLE SECTION ###
