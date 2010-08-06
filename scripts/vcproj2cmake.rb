@@ -917,6 +917,7 @@ File.open(tmpfile.path, "w") { |out|
 	    cmake_set_target_property(target, "VS_SCC_PROVIDER", scc_provider, out)
           end
         end
+        # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # not target.nil?
       new_puts_ind(out, "v2c_rebuild_on_update(#{project_name} \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\" ${CMAKE_CURRENT_LIST_FILE} \"#{script_name}\" \"#{$master_project_dir}\")")
     }
