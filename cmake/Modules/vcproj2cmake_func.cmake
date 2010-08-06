@@ -22,20 +22,39 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
       message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
       return()
     endif(NOT v2c_ruby)
-    add_custom_command(OUTPUT ${_cmakelists}
+    # there are some uncertainties about how to locate the ruby script.
+    # for now, let's just hardcode a "must have been converted from root project" requirement.
+    ## canonicalize script, to be able to precisely launch it via a CMAKE_SOURCE_DIR root dir base
+    #file(RELATIVE_PATH _script_rel "${CMAKE_SOURCE_DIR}" "${_script}")
+    ##message(FATAL_ERROR "_script ${_script} _script_rel ${_script_rel}")
+    # need an intermediate stamp file, otherwise "make clean" will clean
+    # our live output file (CMakeLists.txt), yet we need to preserve it
+    # since it hosts this very CMakeLists.txt rebuilder...
+    set(stamp_file "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder.stamp")
+    # add dependencies for mappings files in both root project and current project
+    # FIXME: should obey V2C_LOCAL_CONFIG_DIR setting!!
+    set(mappings_files "cmake/vcproj2cmake/*_mappings.txt")
+    file(GLOB mappings "${CMAKE_SOURCE_DIR}/${mappings_files}")
+    list(APPEND v2c_mappings ${mappings})
+    file(GLOB mappings "${mappings_files}")
+    list(APPEND v2c_mappings ${mappings})
+    #message("v2c_mappings ${v2c_mappings}")
+    add_custom_command(OUTPUT "${stamp_file}"
       COMMAND ${v2c_ruby} ${_script} ${_vcproj} ${_cmakelists} ${_master_proj_dir}
+      COMMAND "${CMAKE_COMMAND}" -E touch "${stamp_file}"
       # FIXME add any other relevant dependencies here
-      DEPENDS ${_vcproj} ${_script}
+      DEPENDS ${_vcproj} ${_script} ${v2c_mappings}
       COMMENT "vcproj settings changed, rebuilding ${_cmakelists}"
       VERBATIM
     )
+    # TODO: do we have to set_source_files_properties(GENERATED) on ${_cmakelists}?
 
     # NOTE: we use update_cmakelists_[TARGET] names instead of [TARGET]_...
     # since in certain IDEs these peripheral targets will end up as user-visible folders
     # and we want to keep them darn out of sight via suitable sorting!
     set(target_update_cmakelists update_cmakelists_${_target_name})
     #add_custom_target(${target_update_cmakelists} VERBATIM DEPENDS ${_cmakelists})
-    add_custom_target(${target_update_cmakelists} ALL VERBATIM DEPENDS ${_cmakelists})
+    add_custom_target(${target_update_cmakelists} ALL VERBATIM DEPENDS "${stamp_file}")
 
     if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
       # make sure the rebuild happens _before_ trying to build the actual target.
