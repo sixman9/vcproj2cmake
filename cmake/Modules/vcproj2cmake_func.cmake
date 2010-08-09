@@ -13,9 +13,7 @@ set(V2C_FUNC_DEFINED true)
 # Function to automagically rebuild our converted CMakeLists.txt
 # by the original converter script in case any relevant files changed.
 function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
-  # add a filter variable for someone to customize in case he/she doesn't want
-  # a rebuild somewhere for some reason
-  if(NOT V2C_PREVENT_AUTOMATIC_REBUILD)
+  if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     message(STATUS "${_target_name}: installing ${_cmakelists} rebuilder (watching ${_vcproj})")
     find_program(v2c_ruby NAMES ruby)
     if(NOT v2c_ruby)
@@ -79,5 +77,5 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
 #  )
 #
 #  add_dependencies(update_cmakelists_abort_build update_cmakelists)
-  endif(NOT V2C_PREVENT_AUTOMATIC_REBUILD)
+  endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 endfunction(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
