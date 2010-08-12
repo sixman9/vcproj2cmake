@@ -807,7 +807,7 @@ File.open(tmpfile.path, "w") { |out|
 
           map_lib_dirs = Hash.new()
           read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
-          cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, project_name)
+          cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, nil)
 
           # FIXME: should use a macro like rosbuild_add_executable(),
           # http://www.ros.org/wiki/rosbuild/CMakeLists ,
