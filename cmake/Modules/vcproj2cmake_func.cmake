@@ -51,13 +51,19 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
     # since in certain IDEs these peripheral targets will end up as user-visible folders
     # and we want to keep them darn out of sight via suitable sorting!
     set(target_update_cmakelists update_cmakelists_${_target_name})
-    #add_custom_target(${target_update_cmakelists} VERBATIM DEPENDS ${_cmakelists})
-    add_custom_target(${target_update_cmakelists} ALL VERBATIM DEPENDS "${stamp_file}")
+    #add_custom_target(${target_update_cmakelists} DEPENDS ${_cmakelists} VERBATIM)
+    add_custom_target(${target_update_cmakelists} ALL VERBATIM DEPENDS "${stamp_file}" VERBATIM)
 
     if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
       # make sure the rebuild happens _before_ trying to build the actual target.
       add_dependencies(${_target_name} ${target_update_cmakelists})
     endif(TARGET ${_target_name})
+    # and have an update_cmakelists_ALL target to be able to update all
+    # outdated CMakeLists.txt files within a project hierarchy
+    if(NOT TARGET update_cmakelists_ALL)
+      add_custom_target(update_cmakelists_ALL)
+    endif(NOT TARGET update_cmakelists_ALL)
+    add_dependencies(update_cmakelists_ALL ${target_update_cmakelists})
 
 # FIXME!!: we should definitely achieve aborting build process directly
 # after a new CMakeLists.txt has been generated (we don't want to go
