@@ -325,8 +325,12 @@ def vc8_parse_file(project, file, arr_sources)
   projname = project.attributes["Name"]
   f = normalize(file.attributes["RelativePath"])
 
-  # Ignore header files
-  return if f =~ /\.(h|H|lex|y|ico|bmp|txt)$/
+  ## Ignore header files
+  #return if f =~ /\.(h|H|lex|y|ico|bmp|txt)$/
+  # No we should NOT ignore header files: if they aren't added to the target,
+  # then VS won't display them in the file tree.
+  return if f =~ /\.(lex|y|ico|bmp|txt)$/
+  
 
   # Ignore files which have the ExcludedFromBuild attribute set to TRUE
   excluded_from_build = false
