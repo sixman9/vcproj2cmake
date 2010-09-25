@@ -930,10 +930,40 @@ File.open(tmpfile.path, "w") { |out|
 # make sure to close that one as well...
 tmpfile.close
 
-if File.exists?(output_file)
-  mv(output_file, output_file + ".backup")
-end
-mv(tmpfile.path, output_file)
+# Since we're forced to fumble our source tree (a definite no-no in all other cases!)
+# by writing our CMakeLists.txt there, use a write-back-when-updated approach
+# to make sure we only write back the live CMakeLists.txt in case anything did change.
+# This is especially important in case of multiple concurrent builds on a shared
+# source on NFS mount.
 
-puts "Wrote #{output_file}"
-puts "Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH"
+configuration_changed = false
+have_old_file = false
+if File.exists?(output_file)
+  have_old_file = true
+  # hmm, another possibility would be File.cmp() (ftools)
+  if not FileUtils.cmp(tmpfile.path, output_file)
+    configuration_changed = true
+  end
+else
+  configuration_changed = true
+end
+
+if configuration_changed
+  if have_old_file
+    # move away old file
+    mv(output_file, output_file + ".backup")
+  end
+  # activate our version
+  mv(tmpfile.path, output_file)
+
+  puts "Wrote #{output_file}"
+  puts "Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH"
+else
+  puts "No settings changed, #{output_file} not updated."
+  # tmpfile will auto-delete when finalized...
+
+  # Some make dependency mechanisms might require touching (timestamping) the unchanged(!) file
+  # to indicate that it's up-to-date,
+  # however we won't do this here since it's not such a good idea.
+  # Any user who needs that should do a manual touch subsequently.
+end
