@@ -2,15 +2,21 @@ vcproj2cmake.rb - .vcproj to CMakeLists.txt converter scripts
 written by Jesper Eskilson and Andreas Mohr.
 FIXME licensing (BSD)
 
-Usage (very rough summary):
-- use existing Visual Studio project dir containing .vcproj file
-- in that dir, run ruby ......./vcproj2cmake.rb PROJECT.vcproj CMakeLists.txt
+
+vcproj2cmake has been fully tested with CMake 2.6.x only, 2.8.x support will follow.
+
+
+Usage (very rough summary), with Linux/Makefile generator:
+- use existing Visual Studio project source tree which contains a .vcproj file
+- in the project source tree, run ruby [PATH_TO_VCPROJ2CMAKE]/scripts/vcproj2cmake.rb PROJECT.vcproj
   (alternatively, execute vcproj2cmake_recursive.rb to convert an entire hierarchy of .vcproj sub projects)
-- upon success, in that dir, run "mkdir build_toolkit1_v2.4_unicode_debug"
-- copy all required cmake/Modules, cmake/vcproj2cmake and samples to their respective paths in your project
-- cd build_toolkit1_v2.4_unicode_debug
-- cmake .. (alternatively: ccmake ..)
-- make -j3 -k
+- copy all required cmake/Modules, cmake/vcproj2cmake and samples (provided by the vcproj2cmake source tree!)
+  to their respective paths in your project source tree
+- after successfully converting the .vcproj file to a CMakeLists.txt, start your out-of-tree CMake builds:
+  - mkdir ../[PROJECT_NAME].build_toolkit1_v1.2.3_unicode_debug
+  - cd ../[PROJECT_NAME].build_toolkit1_v1.2.3_unicode_debug
+  - cmake ../[PROJECT_NAME] (alternatively: ccmake ../[PROJECT_NAME])
+  - time make -j3 -k
 
 
 NOTE: first thing to state is:
@@ -62,8 +68,8 @@ such customizations are provided in our repository's sample/ directory.
 
 === mappings files (definitions, dependencies, library directories, include directories) ===
 
-Certain compiler defines might be Win32-only, and certain other defines might need
-a different replacement on a certain other platform.
+Certain compiler defines in your projects may be Win32-only,
+and certain other defines might need a different replacement on a certain other platform.
 
 Dito with library dependencies, and especially with include and library directories.
 
@@ -84,17 +90,24 @@ then the ensuing replacement expression.
 Then an '|' (pipe, "or") for an optional series of additional platform conditionals.
 
 
-Note that ideally you merely needs to centrally maintain mappings in your root project part
+Note that ideally you merely need to centrally maintain all mappings in your root project part
 (ROOT_PROJECT/cmake/vcproj2cmake/*_mappings.txt), since sub projects will also
 collect information from the root project in addition to their (optional) local mappings files.
 
 
+=== Installation/packaging ===
 
 Installation/packaging of a vcproj2cmake-based project is not specially supported yet,
 however I'm currently in the process of setting packaging up locally,
 thus hopefully this will eventually result in a nicely generic, easily usable
 (and optionally overridable!) mechanism which provides a nice Bundle-like
 packaging functionality on all platforms (Mac _and_ Linux, and Windows etc.).
+
+I just finished packaging, but in my case all I had to do was to use
+GetPrerequisites.cmake on the main project target (i.e., the main executable),
+this listed all sub project targets already and allowed me to install them
+from a global configuration part.
+Thus there's no special per-project vcproj2cmake handling yet.
 
 
 
