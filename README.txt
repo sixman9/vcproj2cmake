@@ -95,6 +95,29 @@ Note that ideally you merely need to centrally maintain all mappings in your roo
 collect information from the root project in addition to their (optional) local mappings files.
 
 
+=== Automatic re-conversion upon .vcproj changes ===
+
+vcproj2cmake now contains a mechanism for automatic re-conversion of files
+whenever the backing .vcproj file changed.
+This is implemented in function
+cmake/Modules/vcproj2cmake_func.cmake/v2c_rebuild_on_update()
+This mechanism is enabled by default, you may modify the CMake cache variable
+V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER to disable it.
+NOTE: in order to have the automatic re-conversion mechanism work properly,
+this currently needs the initial (manual) converter invocation
+to be done from root project, _not_ any other directory (FIXME get rid of this limitation).
+
+Since the converter will be re-executed from within the generated files (Makefile etc.),
+it will convert the CMakeLists.txt that these are based on _within_ this same process.
+However, it has no means to abort subsequent target execution once it notices that there
+were .vcproj changes which render the current CMake generator build files obsolete.
+Thus, the current build instance will run to its end, and it's important to then launch
+it a second time to have CMake start a new configure run with the CMakeLists.txt and
+then re-build all newly modified targets.
+There's no appreciable way to immediately re-build the updated configuration -
+see CMake list "User-accessible hook on internal cmake_check_build_system target?".
+
+
 === Installation/packaging ===
 
 Installation/packaging of a vcproj2cmake-based project is not specially supported yet,
