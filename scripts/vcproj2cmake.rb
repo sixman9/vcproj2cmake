@@ -818,23 +818,28 @@ File.open(tmpfile.path, "w") { |out|
           # https://kermit.cse.wustl.edu/project/robotics/browser/trunk/vendor/ros/core/rosbuild/rosbuild.cmake?rev=3
           # to be able to detect non-C++ file types within a source file list
           # and add a hook to handle them specially.
-          if config_type == 1    # Executable
+
+          # see VCProjectEngine ConfigurationTypes enumeration
+          if config_type == 1       # typeApplication (.exe)
             target = project_name
             #puts_ind(out, "add_executable_vcproj2cmake( #{project_name} WIN32 ${SOURCES} )")
             # TODO: perhaps for real cross-platform binaries (i.e.
             # console apps not needing a WinMain()), we should detect
             # this and not use WIN32 in this case...
             new_puts_ind(out, "add_executable( #{target} WIN32 ${SOURCES} )")
-          elsif config_type == 2    # DLL
+          elsif config_type == 2    # typeDynamicLibrary (.dll)
             target = project_name
             #puts_ind(out, "add_library_vcproj2cmake( #{project_name} SHARED ${SOURCES} )")
             new_puts_ind(out, "add_library( #{target} SHARED ${SOURCES} )")
-          elsif config_type == 4    # Static
+          elsif config_type == 4    # typeStaticLibrary
             target = project_name
             #puts_ind(out, "add_library_vcproj2cmake( #{project_name} STATIC ${SOURCES} )")
             new_puts_ind(out, "add_library( #{target} STATIC ${SOURCES} )")
-          elsif config_type == 0 # seems to be some sort of non-build logical collection project, TODO: investigate!
-          elsif
+          elsif config_type == 10    # typeGeneric (Makefile) [and possibly other things...]
+            # TODO: we _should_ somehow support these project types...
+            $stderr.puts "Project type #{config_type} not supported."
+            exit 1
+          elsif config_type == 0    # typeUnknown (utility)
             $stderr.puts "Project type #{config_type} not supported."
             exit 1
           end
