@@ -19,9 +19,10 @@
 
 # If you add code, please try to keep this file generic and modular,
 # to enable other people to hook into a particular part easily
-# and thus keep your local specific additions _separate_.
+# and thus keep any additions specific to the requirements of your local project _separate_.
 
-# TODO: Always make sure that a simple vcproj2cmake.rb run will result in a
+# TODO/NOTE:
+# Always make sure that a simple vcproj2cmake.rb run will result in a
 # fully working _self-contained_ CMakeLists.txt, no matter how small
 # the current vcproj2cmake config environment is
 # (i.e., it needs to work even without a single specification file)
@@ -30,6 +31,11 @@
 # - perhaps there's a way to provide more precise/comfortable hook script handling?
 # - should continue with clean separation of .vcproj content parsing and .vcproj output
 #   generation (e.g. in preparation for .vcxproj support)
+#   And move everything into classes (not sure about the extent of Ruby
+#   support here). Create vcproj parser class(es) which works on a
+#   common parser support base class, feed it some vcproj configuration
+#   class, configure that class, then push it (with the vcproj settings
+#   it contains) over to a CMake generator class.
 # - try to come up with an ingenious way to near-_automatically_ handle those pesky repeated
 #   dependency requirements of several sub projects
 #   (e.g. the component-based Boost Find scripts, etc.) instead of having to manually
@@ -137,6 +143,13 @@ project_dir = p_vcproj.dirname
 #p_cmakelists_dir = Pathname.new(cmakelists_dir)
 #p_cmakelists_dir.relative_path_from(...)
 
+
+# monster HACK: set a global variable, since we need to be able
+# to tell whether we're able to build a target
+# (i.e. whether we have any non-header files),
+# otherwise we should not add a target since CMake will
+# complain with "Cannot determine link language for target "xxx"".
+$have_non_headers = false
 
 def puts_ind(chan, str)
   chan.print ' ' * $myindent
@@ -376,6 +389,9 @@ def vc8_parse_file(project, file, arr_sources)
 
   if not excluded_from_build and included_in_build
   	  arr_sources.push(f)
+      if f =~ /\.(c|C)/
+        $have_non_headers = true
+      end
   end
 end
 
@@ -767,7 +783,8 @@ File.open(tmpfile.path, "w") { |out|
 
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
-        if not arr_sub_sources.empty?
+        #if not arr_sub_sources.empty?
+        if $have_non_headers
 
           # first add source reference, then do linker setup, then create target
 
