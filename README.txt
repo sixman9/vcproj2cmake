@@ -117,6 +117,23 @@ then re-build all newly modified targets.
 There's no appreciable way to immediately re-build the updated configuration -
 see CMake list "User-accessible hook on internal cmake_check_build_system target?".
 
+To cleanly re-convert all CMakeLists.txt in an isolated way after an RCS upgrade,
+you may invoke target update_cmakelists_ALL, followed by doing a full build.
+
+
+=== Troubleshooting ===
+
+- message(FATAL_ERROR "DBG: xxx")
+- add_custom_command(... COMMENT="DBG: we are doing ${THIS} and failing ${THAT}")
+- cmake --debug-output --trace
+
+If things happen to be failing left and right,
+then it's perhaps best to start with a new small CMake sample project
+(perhaps use one of the samples on the internet),
+to gain some CMake experience (CMake itself has a rather steep learning curve,
+thus it might be even worse trying to start with an Alpha-stage
+.vcproj to CMake converter).
+
 
 === Installation/packaging ===
 
@@ -133,12 +150,30 @@ from a global configuration part.
 Thus there's no special per-project vcproj2cmake handling yet.
 
 
+=== related projects ===
 
-Whenever something needs a better explanation, just tell me and I'll try to improve it.
-Dito if you think that some mechanism is poorly implemented (we're still at Alpha stage!).
+sln2mak (.sln to Makefile converter), http://www.codeproject.com/KB/cross-platform/sln2mak.aspx
+
+I just have to state that we have a very unfair advantage here:
+while this script implementation possibly might be better
+than our converter (who knows...), the fact that we are converting
+towards CMake (and thus to a whole universe of supported build environments)
+probably renders any shortcomings that we might have rather very moot.
+
+
+
+
+Whenever something needs better explanation, just tell me and I'll try to improve it.
+Dito if you think that some mechanism is poorly implemented (we're still at pre-Beta stage!).
 
 Despite being at Alpha stage, the converter is now more than usable enough
 to successfully build a very large project consisting of several dozen sub projects.
+
+----------
+Final words: there are NO WARRANTIES as to the suitability of this converter,
+thus make sure to have suitable backup; if things break,
+then you certainly get to keep both parts.
+----------
 
 Happy hacking,
 
