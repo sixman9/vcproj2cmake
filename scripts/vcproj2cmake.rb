@@ -68,6 +68,12 @@ else
    vcproj_filename = ARGV.shift
    #puts "First arg is #{vcproj_filename}"
 
+   # Discovered Ruby 1.8.7(?) BUG: kills extension on duplicate slashes: ".//test.ext"
+   # OK: ruby-1.8.5-5.el5_4.8, KO: u10.04 ruby1.8 1.8.7.249-2 and ruby1.9.1 1.9.1.378-1
+   # http://redmine.ruby-lang.org/issues/show/3882
+   # TODO: add a version check to conditionally skip this cleanup effort?
+   vcproj_filename = Pathname.new(vcproj_filename).cleanpath
+
    if File.extname(vcproj_filename) != ".vcproj"
       # The first argument on the command-line did not have a '.vcproj' extension.
       # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
