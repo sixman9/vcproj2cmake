@@ -152,10 +152,11 @@ project_dir = p_vcproj.dirname
 
 # monster HACK: set a global variable, since we need to be able
 # to tell whether we're able to build a target
-# (i.e. whether we have any non-header files),
+# (i.e. whether we have any build units i.e.
+# implementation files / non-header files),
 # otherwise we should not add a target since CMake will
 # complain with "Cannot determine link language for target "xxx"".
-$have_non_headers = false
+$have_build_units = false
 
 
 # global variable to indicate whether we want debug output or not
@@ -406,7 +407,7 @@ def vc8_parse_file(project, file, arr_sources)
   if not excluded_from_build and included_in_build
   	  arr_sources.push(f)
       if f =~ /\.(c|C)/
-        $have_non_headers = true
+        $have_build_units = true
       end
   end
 end
@@ -800,7 +801,7 @@ File.open(tmpfile.path, "w") { |out|
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
         #if not arr_sub_sources.empty?
-        if $have_non_headers
+        if $have_build_units
 
           # first add source reference, then do linker setup, then create target
 
