@@ -95,10 +95,19 @@ Note that ideally you merely need to centrally maintain all mappings in your roo
 collect information from the root project in addition to their (optional) local mappings files.
 
 
+=== Miscellaneous ===
+
+vcproj2cmake_recursive.rb supports skipping of certain unwanted sub projects
+(e.g. ones that are very cross-platform incompatible) within your
+Visual Studio project tree.
+This is to be done by mentioning the names of the projects to be excluded
+in the file $v2c_config_dir_local/project_exclude_list.txt
+
+
 === Automatic re-conversion upon .vcproj changes ===
 
 vcproj2cmake now contains a mechanism for automatic re-conversion of files
-whenever the backing .vcproj file changed.
+whenever the backing .vcproj file received some updates.
 This is implemented in function
 cmake/Modules/vcproj2cmake_func.cmake/v2c_rebuild_on_update()
 This mechanism is enabled by default, you may modify the CMake cache variable
