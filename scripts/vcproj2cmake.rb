@@ -993,7 +993,7 @@ end
 if configuration_changed
   if have_old_file
     # move away old file
-    mv(output_file, output_file + ".backup")
+    mv(output_file, output_file + ".previous")
   end
   # activate our version
   mv(tmpfile.path, output_file)
