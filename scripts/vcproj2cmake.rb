@@ -325,7 +325,7 @@ def cmake_set_target_property_compile_definitions(target, config_name, arr_defs,
       $myindent += 2
     end
     # make sure to specify APPEND for greater flexibility (hooks etc.)
-    puts_ind(out, "set_property(TARGET #{target} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper} ")
+    puts_ind(out, "set_property(TARGET #{target} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper}")
     arr_platdefs.each do |curr_value|
       puts_ind(out, "  #{curr_value}")
     end
