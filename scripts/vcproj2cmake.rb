@@ -617,6 +617,8 @@ File.open(tmpfile.path, "w") { |out|
 
       project_name = project.attributes["Name"]
 
+      $have_build_units = false
+
       configuration_types = Array.new()
       vc8_get_configuration_types(project, configuration_types)
 
