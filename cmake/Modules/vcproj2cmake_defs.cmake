@@ -10,7 +10,7 @@ set(V2C_LOCAL_CONFIG_DIR ./cmake/vcproj2cmake CACHE STRING "Relative path to vcp
 # operate simultaneously on a single source tree,
 # thus fiddling with source tree content during build would be a big No-No
 # in such case).
-set(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER true CACHE BOOL "Automatically rebuild converted CMakeLists.txt files upon updates on .vcproj side?")
+option(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER "Automatically rebuild converted CMakeLists.txt files upon updates on .vcproj side?" ON)
 
 # Pre-define hook include filenames
 # (may be redefined/overridden by local content!)
