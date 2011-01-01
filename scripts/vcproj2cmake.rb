@@ -157,6 +157,16 @@ project_dir = p_vcproj.dirname
 # complain with "Cannot determine link language for target "xxx"".
 $have_non_headers = false
 
+
+# global variable to indicate whether we want debug output or not
+$debug = false
+
+def puts_debug(str)
+  if $debug
+    puts str
+  end
+end
+
 def puts_ind(chan, str)
   chan.print ' ' * $myindent
   chan.puts str
@@ -201,7 +211,7 @@ def read_mappings(filename_mappings, mappings)
       mappings[b] = c
     end
   else
-    puts "NOTE: #{filename_mappings} NOT AVAILABLE"
+    puts_debug "NOTE: #{filename_mappings} NOT AVAILABLE"
   end
   #puts mappings["kernel32"]
   #puts mappings["mytest"]
@@ -232,7 +242,7 @@ def parse_platform_conversions(platform_defs, arr_defs, map_defs)
       # is a regex which would match our curr_value
       map_defs.each do |key, value|
         if curr_value =~ /^#{key}$/
-          puts "KEY: #{key} curr_value #{curr_value}"
+          puts_debug "KEY: #{key} curr_value #{curr_value}"
           map_line = value
         end
       end
@@ -376,7 +386,7 @@ def vc8_parse_file(project, file, arr_sources)
   # Verbosely ignore IDL generated files
   if f =~/_(i|p).c$/
     # see file_mappings.txt comment above
-    puts "#{projname}::#{f} as an IDL generated file: skipping! FIXME: should be platform-dependent."
+    puts "#{projname}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
     included_in_build = false
     return # no complex handling, just return
   end
@@ -430,7 +440,7 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
     file_group_name = "COMMON"
   end
   files_str[:name] = file_group_name
-  puts "parsing files group #{files_str[:name]}"
+  puts_debug "parsing files group #{files_str[:name]}"
 
   vcproj_filter.elements.each("Filter") { |subfilter|
     # skip file filters that have a SourceControlFiles property
