@@ -245,6 +245,7 @@ def parse_platform_conversions(platform_defs, arr_defs, map_defs)
         if curr_value =~ /^#{key}$/
           puts_debug "KEY: #{key} curr_value #{curr_value}"
           map_line = value
+          break
         end
       end
     end
