@@ -46,12 +46,16 @@ Find.find('./') do
     # skip CMake build directories! (containing CMake-generated .vcproj files!)
     # FIXME: more precise checking: check file _content_ against CMake generation!
     is_excluded = false
-    is_excluded = true if f =~ /^build/i
-    arr_excl_proj.each do |excluded|
-      excl_regex = "^\.\/#{excluded.chomp}$"
-      #puts "MATCH: #{f} vs. #{excl_regex}"
-      if f =~ /#{excl_regex}/
-        is_excluded = true
+    if f =~ /^build/i
+      is_excluded = true
+    else
+      arr_excl_proj.each do |excluded|
+        excl_regex = "^\.\/#{excluded.chomp}$"
+        #puts "MATCH: #{f} vs. #{excl_regex}"
+        if f =~ /#{excl_regex}/
+          is_excluded = true
+          break
+        end
       end
     end
     #puts "excluded: #{is_excluded}"
