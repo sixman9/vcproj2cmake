@@ -344,7 +344,7 @@ def cmake_set_target_property_compile_flags(target, config_name, arr_flags, out)
   config_name_upper = cmake_get_config_name_upcase(config_name)
   # original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
   new_puts_ind(out, "if(MSVC)")
-  puts_ind(out, "set_property(TARGET #{target} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper} ")
+  puts_ind(out, "set_property(TARGET #{target} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}")
   arr_flags.each do |curr_value|
     puts_ind(out, "  #{curr_value}")
   end
@@ -580,7 +580,8 @@ File.open(tmpfile.path, "w") { |out|
   out.puts "    cmake_policy(SET CMP0011 OLD)"
   out.puts "  endif(POLICY CMP0011)"
   out.puts "  if(POLICY CMP0015)"
-  out.puts "    # .vcproj contains relative paths to additional library directories, thus we need to be able to cope with that"
+  out.puts "    # .vcproj contains relative paths to additional library directories,"
+  out.puts "    # thus we need to be able to cope with that"
   out.puts "    cmake_policy(SET CMP0015 NEW)"
   out.puts "  endif(POLICY CMP0015)"
   out.puts "endif(COMMAND cmake_policy)"
@@ -645,11 +646,13 @@ File.open(tmpfile.path, "w") { |out|
       out.puts "# which then _also_ includes a global MasterProjectDefaults module"
       out.puts "# for _all_ CMakeLists.txt. This needs to sit post-project()"
       out.puts "# since e.g. compiler info is dependent on a valid project."
-      puts_ind(out, "# MasterProjectDefaults_vcproj2cmake is supposed to define")
-      puts_ind(out, "# generic settings (such as V2C_HOOK_PROJECT, defined as e.g.")
-      puts_ind(out, "# #{$v2c_config_dir_local}/hook_project.txt, and other hook include variables below).")
-      puts_ind(out, "# NOTE: it usually should also reset variables V2C_LIBS, V2C_SOURCES etc.")
-      puts_ind(out, "# as used below since they should contain directory-specific contents only, not accumulate!")
+      puts_ind(out, "# MasterProjectDefaults_vcproj2cmake is supposed to define generic settings")
+      puts_ind(out, "# (such as V2C_HOOK_PROJECT, defined as e.g.")
+      puts_ind(out, "# #{$v2c_config_dir_local}/hook_project.txt,")
+      puts_ind(out, "# and other hook include variables below).")
+      puts_ind(out, "# NOTE: it usually should also reset variables")
+      puts_ind(out, "# V2C_LIBS, V2C_SOURCES etc. as used below since they should contain")
+      puts_ind(out, "# directory-specific contents only, not accumulate!")
       # (side note: see "ldd -u -r" on Linux for superfluous link parts potentially caused by this!)
       puts_ind(out, "include(MasterProjectDefaults_vcproj2cmake OPTIONAL)")
 
