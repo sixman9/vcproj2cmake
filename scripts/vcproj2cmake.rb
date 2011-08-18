@@ -49,7 +49,7 @@ require 'rexml/document'
 include FileUtils::Verbose
 
 # load common settings
-$LOAD_PATH.unshift(File.dirname(__FILE__)) 
+$LOAD_PATH.unshift(File.dirname(__FILE__))
 load 'vcproj2cmake_settings.rb'
 
 # Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]
@@ -138,6 +138,7 @@ $myindent = 0
 
 ### USER-CONFIGURABLE SECTION END ###
 
+p_master_proj = Pathname.new($master_project_dir)
 
 p_vcproj = Pathname.new(vcproj_filename)
 # figure out a global project_dir variable from the .vcproj location
@@ -149,6 +150,9 @@ project_dir = p_vcproj.dirname
 #p_cmakelists_dir = Pathname.new(cmakelists_dir)
 #p_cmakelists_dir.relative_path_from(...)
 
+script_location = File.expand_path "#{script_name}"
+p_script = Pathname.new(script_location)
+script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
 
 # monster HACK: set a global variable, since we need to be able
 # to tell whether we're able to build a target
@@ -602,11 +606,11 @@ File.open(tmpfile.path, "w") { |out|
     # This also contains vcproj2cmake helper modules (these should - just like the CMakeLists.txt -
     # be within the project tree as well, since someone might want to copy the entire project tree
     # including .vcproj conversions to a different machine, thus all v2c components should be available)
-    module_path_element = "\"#{$master_project_dir}/#{$v2c_module_path_local}\""
-
-    # NOTE: use set() instead of list(APPEND...) to prepend path
-    # (otherwise not able to provide proper overrides)
-    new_puts_ind(out, "set(CMAKE_MODULE_PATH #{module_path_element} ${CMAKE_MODULE_PATH})")
+    #new_puts_ind(out, "set(V2C_MASTER_PROJECT_DIR \"#{$master_project_dir}\")")
+    new_puts_ind(out, "set(V2C_MASTER_PROJECT_DIR \"${CMAKE_SOURCE_DIR}\")")
+    # NOTE: use set() instead of list(APPEND...) to _prepend_ path
+    # (otherwise not able to provide proper _overrides_)
+    puts_ind(out, "set(CMAKE_MODULE_PATH \"${V2C_MASTER_PROJECT_DIR}/#{$v2c_module_path_local}\" ${CMAKE_MODULE_PATH})")
 
     # "export" our internal $v2c_config_dir_local variable (to be able to reference it in CMake scripts as well)
     new_puts_ind(out, "set(V2C_CONFIG_DIR_LOCAL \"#{$v2c_config_dir_local}\")")
@@ -998,7 +1002,26 @@ File.open(tmpfile.path, "w") { |out|
         end
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # not target.nil?
-      new_puts_ind(out, "v2c_rebuild_on_update(#{project_name} \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\" ${CMAKE_CURRENT_LIST_FILE} \"#{script_name}\" \"#{$master_project_dir}\")")
+
+      # Add line to invoke the automatic rebuilder on CMakeLists.txt changes,
+      # and add handling of a script file location variable, to enable users
+      # to override the script location if needed.
+      new_puts_ind(out, "if(NOT V2C_SCRIPT_LOCATION)")
+      $myindent += 2
+      # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
+      # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
+      # (this provision should even enable people to manually relocate
+      # an entire sub project within the source tree).
+      puts_ind(out, "set(V2C_SCRIPT_LOCATION \"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\")")
+      $myindent -= 2
+      puts_ind(out, "endif(NOT V2C_SCRIPT_LOCATION)")
+      # Implementation note: the last argument to
+      # v2c_rebuild_on_update() should be as much of a 1:1 passthrough of
+      # the input argument to this ruby script execution as possible/suitable,
+      # since invocation arguments of this script on rebuild should be (roughly) identical.
+      puts_ind(out, "v2c_rebuild_on_update(#{project_name}")
+      puts_ind(out, "  \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\"")
+      puts_ind(out, "  ${CMAKE_CURRENT_LIST_FILE} \"${V2C_SCRIPT_LOCATION}\" \"${V2C_MASTER_PROJECT_DIR}\")")
     }
     new_puts_ind(out, "include(${V2C_HOOK_POST} OPTIONAL)")
   }
