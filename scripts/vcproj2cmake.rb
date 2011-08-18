@@ -870,6 +870,15 @@ File.open(tmpfile.path, "w") { |out|
           elsif config_type == 2    # typeDynamicLibrary (.dll)
             target = project_name
             #puts_ind(out, "add_library_vcproj2cmake( #{project_name} SHARED ${SOURCES} )")
+            # add_library() docs: "If no type is given explicitly the type is STATIC or  SHARED
+            #                      based on whether the current value of the variable
+            #                      BUILD_SHARED_LIBS is true."
+            # --> Thus we would like to leave it unspecified for typeDynamicLibrary,
+            #     and do specify STATIC for explicitly typeStaticLibrary targets.
+            # However, since then the global BUILD_SHARED_LIBS variable comes into play,
+            # this is a backwards-incompatible change, thus leave it for now.
+            # Or perhaps make use of new V2C_TARGET_LINKAGE_{SHARED|STATIC}_LIB
+            # variables here, to be able to define "SHARED"/"STATIC" externally?
             new_puts_ind(out, "add_library( #{target} SHARED ${SOURCES} )")
           elsif config_type == 4    # typeStaticLibrary
             target = project_name
