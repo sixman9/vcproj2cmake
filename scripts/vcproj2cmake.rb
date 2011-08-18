@@ -142,9 +142,9 @@ p_master_proj = Pathname.new($master_project_dir)
 
 p_vcproj = Pathname.new(vcproj_filename)
 # figure out a global project_dir variable from the .vcproj location
-project_dir = p_vcproj.dirname
+$project_dir = p_vcproj.dirname
 
-#p_project_dir = Pathname.new(project_dir)
+#p_project_dir = Pathname.new($project_dir)
 #p_cmakelists = Pathname.new(output_file)
 #cmakelists_dir = p_cmakelists.dirname
 #p_cmakelists_dir = Pathname.new(cmakelists_dir)
@@ -365,7 +365,7 @@ def vc8_parse_file(project, file, arr_sources)
   # No we should NOT ignore header files: if they aren't added to the target,
   # then VS won't display them in the file tree.
   return if f =~ /\.(lex|y|ico|bmp|txt)$/
-  
+
 
   # Ignore files which have the ExcludedFromBuild attribute set to TRUE
   excluded_from_build = false
@@ -410,10 +410,22 @@ def vc8_parse_file(project, file, arr_sources)
   end
 
   if not excluded_from_build and included_in_build
-  	  arr_sources.push(f)
+    if $v2c_validate_vcproj_ensure_files_ok
+      # TODO: perhaps we need to add a permissions check, too?
+      if not File.exist?("#{$project_dir}/#{f}")
+        $stderr.puts "File #{f} as listed in project #{projname} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
+        if $v2c_validate_vcproj_abort_on_error
+          $stderr.puts "Error occurred - will abort and NOT write a broken CMakeLists.txt. Please fix .vcproj content!"
+          exit 1
+        end
+      end
+    end
+    arr_sources.push(f)
+    if not $have_build_units
       if f =~ /\.(c|C)/
         $have_build_units = true
       end
+    end
   end
 end
 
