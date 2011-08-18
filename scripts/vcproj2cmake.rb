@@ -564,24 +564,33 @@ File.open(tmpfile.path, "w") { |out|
   out.puts "#"
   out.puts
   # Required version line to make cmake happy.
-  out.puts "# >= 2.6 due to crucial set_property(... COMPILE_DEFINITIONS_* ...)"
+  if $v2c_generated_comments_level >= 1
+    out.puts "# >= 2.6 due to crucial set_property(... COMPILE_DEFINITIONS_* ...)"
+  end
   out.puts "cmake_minimum_required(VERSION 2.6)"
 
   out.puts "if(COMMAND cmake_policy)"
   # manual quoting of brackets in definitions doesn't seem to work otherwise,
   # in cmake 2.6.4-7.el5 with CMP0005 OLD.
   out.puts "  if(POLICY CMP0005)"
-  out.puts "    cmake_policy(SET CMP0005 NEW) # automatic quoting of brackets"
+  if $v2c_generated_comments_level >= 3
+    out.puts "    # automatic quoting of brackets"
+  end
+  out.puts "    cmake_policy(SET CMP0005 NEW)"
   out.puts "  endif(POLICY CMP0005)"
   out.puts
   out.puts "  if(POLICY CMP0011)"
-  out.puts "    # we do want the includer to be affected by our updates,"
-  out.puts "    # since it might define project-global settings."
+  if $v2c_generated_comments_level >= 3
+    out.puts "    # we do want the includer to be affected by our updates,"
+    out.puts "    # since it might define project-global settings."
+  end
   out.puts "    cmake_policy(SET CMP0011 OLD)"
   out.puts "  endif(POLICY CMP0011)"
   out.puts "  if(POLICY CMP0015)"
-  out.puts "    # .vcproj contains relative paths to additional library directories,"
-  out.puts "    # thus we need to be able to cope with that"
+  if $v2c_generated_comments_level >= 3
+    out.puts "    # .vcproj contains relative paths to additional library directories,"
+    out.puts "    # thus we need to be able to cope with that"
+  end
   out.puts "    cmake_policy(SET CMP0015 NEW)"
   out.puts "  endif(POLICY CMP0015)"
   out.puts "endif(COMMAND cmake_policy)"
@@ -602,10 +611,14 @@ File.open(tmpfile.path, "w") { |out|
     # "export" our internal $v2c_config_dir_local variable (to be able to reference it in CMake scripts as well)
     new_puts_ind(out, "set(V2C_CONFIG_DIR_LOCAL \"#{$v2c_config_dir_local}\")")
 
-    new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake helper functions")
+    if $v2c_generated_comments_level >= 2
+      new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake helper functions")
+    end
     puts_ind(out, "include(vcproj2cmake_func)")
 
-    new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake definitions")
+    if $v2c_generated_comments_level >= 2
+      new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake definitions")
+    end
     puts_ind(out, "include(vcproj2cmake_defs)")
 
     # this CMakeLists.txt-global optional include could be used e.g.
@@ -638,27 +651,31 @@ File.open(tmpfile.path, "w") { |out|
       #puts_ind(out, "set( V2C_LIBS )")
       #puts_ind(out, "set( V2C_SOURCES )")
 
-      out.puts
-      out.puts "# this part is for including a file which contains"
-      out.puts "# _globally_ applicable settings for all sub projects of a master project"
-      out.puts "# (compiler flags, path settings, platform stuff, ...)"
-      out.puts "# e.g. have vcproj2cmake-specific MasterProjectDefaults_vcproj2cmake"
-      out.puts "# which then _also_ includes a global MasterProjectDefaults module"
-      out.puts "# for _all_ CMakeLists.txt. This needs to sit post-project()"
-      out.puts "# since e.g. compiler info is dependent on a valid project."
-      puts_ind(out, "# MasterProjectDefaults_vcproj2cmake is supposed to define generic settings")
-      puts_ind(out, "# (such as V2C_HOOK_PROJECT, defined as e.g.")
-      puts_ind(out, "# #{$v2c_config_dir_local}/hook_project.txt,")
-      puts_ind(out, "# and other hook include variables below).")
-      puts_ind(out, "# NOTE: it usually should also reset variables")
-      puts_ind(out, "# V2C_LIBS, V2C_SOURCES etc. as used below since they should contain")
-      puts_ind(out, "# directory-specific contents only, not accumulate!")
+      if $v2c_generated_comments_level >= 2
+        out.puts
+        out.puts "# this part is for including a file which contains"
+        out.puts "# _globally_ applicable settings for all sub projects of a master project"
+        out.puts "# (compiler flags, path settings, platform stuff, ...)"
+        out.puts "# e.g. have vcproj2cmake-specific MasterProjectDefaults_vcproj2cmake"
+        out.puts "# which then _also_ includes a global MasterProjectDefaults module"
+        out.puts "# for _all_ CMakeLists.txt. This needs to sit post-project()"
+        out.puts "# since e.g. compiler info is dependent on a valid project."
+        puts_ind(out, "# MasterProjectDefaults_vcproj2cmake is supposed to define generic settings")
+        puts_ind(out, "# (such as V2C_HOOK_PROJECT, defined as e.g.")
+        puts_ind(out, "# #{$v2c_config_dir_local}/hook_project.txt,")
+        puts_ind(out, "# and other hook include variables below).")
+        puts_ind(out, "# NOTE: it usually should also reset variables")
+        puts_ind(out, "# V2C_LIBS, V2C_SOURCES etc. as used below since they should contain")
+        puts_ind(out, "# directory-specific contents only, not accumulate!")
+      end
       # (side note: see "ldd -u -r" on Linux for superfluous link parts potentially caused by this!)
       puts_ind(out, "include(MasterProjectDefaults_vcproj2cmake OPTIONAL)")
 
-      puts_ind(out, "# hook e.g. for invoking Find scripts as expected by")
-      puts_ind(out, "# the _LIBRARIES / _INCLUDE_DIRS mappings created")
-      puts_ind(out, "# by your include/dependency map files.")
+      if $v2c_generated_comments_level >= 2
+        puts_ind(out, "# hook e.g. for invoking Find scripts as expected by")
+        puts_ind(out, "# the _LIBRARIES / _INCLUDE_DIRS mappings created")
+        puts_ind(out, "# by your include/dependency map files.")
+      end
       puts_ind(out, "include(${V2C_HOOK_PROJECT} OPTIONAL)")
 
       main_files = Files_str.new()
@@ -800,8 +817,10 @@ File.open(tmpfile.path, "w") { |out|
         config_type = config.attributes["ConfigurationType"].to_i
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
-        new_puts_ind(out, "# hook include after all definitions have been made")
-        puts_ind(out, "# (but _before_ target is created using the source list!)")
+        if $v2c_generated_comments_level >= 1
+          new_puts_ind(out, "# hook include after all definitions have been made")
+          puts_ind(out, "# (but _before_ target is created using the source list!)")
+        end
         puts_ind(out, "include(${V2C_HOOK_POST_DEFINITIONS} OPTIONAL)")
 
         # create a target only in case we do have any meat at all
@@ -903,7 +922,9 @@ File.open(tmpfile.path, "w") { |out|
           end # not target.nil?
         end # not arr_sub_sources.empty?
 
-        new_puts_ind(out, "# e.g. to be used for tweaking target properties etc.")
+        if $v2c_generated_comments_level >= 1
+          new_puts_ind(out, "# e.g. to be used for tweaking target properties etc.")
+        end
         puts_ind(out, "include(${V2C_HOOK_POST_TARGET} OPTIONAL)")
 
         $myindent -= 2
