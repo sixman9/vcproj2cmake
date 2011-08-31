@@ -10,15 +10,26 @@ endif(V2C_FUNC_DEFINED)
 set(V2C_FUNC_DEFINED true)
 
 
+# Define a couple global constant settings
+# (make sure to keep outside of repeatedly invoked functions below)
+
+# FIXME: should obey V2C_LOCAL_CONFIG_DIR setting!!
+set(v2c_mappings_files "cmake/vcproj2cmake/*_mappings.txt")
+
+file(GLOB root_mappings "${CMAKE_SOURCE_DIR}/${v2c_mappings_files}")
+
+
 # Function to automagically rebuild our converted CMakeLists.txt
 # by the original converter script in case any relevant files changed.
 function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
   if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     message(STATUS "${_target_name}: installing ${_cmakelists} rebuilder (watching ${_vcproj})")
-    find_program(v2c_ruby NAMES ruby)
-    if(NOT v2c_ruby)
-      message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
-      return()
+    if(NOT v2c_ruby) # avoid repeated checks (see cmake --trace)
+      find_program(v2c_ruby NAMES ruby)
+      if(NOT v2c_ruby)
+        message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
+        return()
+      endif(NOT v2c_ruby)
     endif(NOT v2c_ruby)
     # there are some uncertainties about how to locate the ruby script.
     # for now, let's just hardcode a "must have been converted from root project" requirement.
@@ -30,18 +41,15 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
     # since it hosts this very CMakeLists.txt rebuilder...
     set(stamp_file "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder.stamp")
     # add dependencies for mappings files in both root project and current project
-    # FIXME: should obey V2C_LOCAL_CONFIG_DIR setting!!
-    set(mappings_files "cmake/vcproj2cmake/*_mappings.txt")
-    file(GLOB mappings "${CMAKE_SOURCE_DIR}/${mappings_files}")
-    list(APPEND v2c_mappings ${mappings})
-    file(GLOB mappings "${mappings_files}")
-    list(APPEND v2c_mappings ${mappings})
+    list(APPEND v2c_mappings ${root_mappings})
+    file(GLOB proj_mappings "${v2c_mappings_files}")
+    list(APPEND v2c_mappings ${proj_mappings})
     #message("v2c_mappings ${v2c_mappings}")
     add_custom_command(OUTPUT "${stamp_file}"
-      COMMAND ${v2c_ruby} ${_script} ${_vcproj} ${_cmakelists} ${_master_proj_dir}
+      COMMAND "${v2c_ruby}" "${_script}" "${_vcproj}" "${_cmakelists}" "${_master_proj_dir}"
       COMMAND "${CMAKE_COMMAND}" -E touch "${stamp_file}"
       # FIXME add any other relevant dependencies here
-      DEPENDS ${_vcproj} ${_script} ${v2c_mappings}
+      DEPENDS "${_vcproj}" "${_script}" ${v2c_mappings} "${v2c_ruby}"
       COMMENT "vcproj settings changed, rebuilding ${_cmakelists}"
       VERBATIM
     )
