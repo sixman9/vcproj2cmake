@@ -311,11 +311,11 @@ def cmake_get_config_name_upcase(config_name)
   config_name.clone.upcase.gsub(/ /,'_')
 end
 
-def cmake_set_target_property(target, property, value, out)
+def cmake_target_set_property(target, property, value, out)
   puts_ind(out, "set_property(TARGET #{target} PROPERTY #{property} \"#{value}\")")
 end
 
-def cmake_set_target_property_compile_definitions(target, config_name, arr_defs, map_defs, out)
+def cmake_target_set_property_compile_definitions(target, config_name, arr_defs, map_defs, out)
   config_name_upper = cmake_get_config_name_upcase(config_name)
   # the container for the list of _actual_ dependencies as stated by the project
   all_platform_defs = Hash.new
@@ -343,7 +343,7 @@ def cmake_set_target_property_compile_definitions(target, config_name, arr_defs,
   }
 end
 
-def cmake_set_target_property_compile_flags(target, config_name, arr_flags, out)
+def cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
   return if arr_flags.empty?
   config_name_upper = cmake_get_config_name_upcase(config_name)
   # original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
@@ -954,8 +954,8 @@ File.open(tmpfile.path, "w") { |out|
           read_mappings_combined(filename_map_def, map_defines)
           puts_ind(out, "if(TARGET #{target})")
           $myindent += 2
-          cmake_set_target_property_compile_definitions(target, config_name, arr_defines, map_defines, out)
-          cmake_set_target_property_compile_flags(target, config_name, arr_flags, out)
+          cmake_target_set_property_compile_definitions(target, config_name, arr_defines, map_defines, out)
+          cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
           $myindent -= 2
           puts_ind(out, "endif(TARGET #{target})")
         end
@@ -969,10 +969,10 @@ File.open(tmpfile.path, "w") { |out|
 	# no need to enclose this within "if(TARGET ...)" here since at this point
 	# we really _should_ have a target available,
 	# otherwise everything is broken anyway...
-	cmake_set_target_property(target, "PROJECT_LABEL", project_name, out)
+	cmake_target_set_property(target, "PROJECT_LABEL", project_name, out)
 	project_keyword = project.attributes["Keyword"]
         if not project_keyword.nil?
-	  cmake_set_target_property(target, "VS_KEYWORD", project_keyword, out)
+	  cmake_target_set_property(target, "VS_KEYWORD", project_keyword, out)
         end
 
         # keep source control integration in our conversion!
@@ -1001,15 +1001,15 @@ File.open(tmpfile.path, "w") { |out|
             scc_provider = project.attributes["SccProvider"].clone
 	  end
 	  out.puts
-	  cmake_set_target_property(target, "VS_SCC_PROJECTNAME", scc_project_name, out)
+	  cmake_target_set_property(target, "VS_SCC_PROJECTNAME", scc_project_name, out)
           if scc_local_path
             escape_backslash(scc_local_path)
             escape_char(scc_local_path, '"')
-	    cmake_set_target_property(target, "VS_SCC_LOCALPATH", scc_local_path, out)
+	    cmake_target_set_property(target, "VS_SCC_LOCALPATH", scc_local_path, out)
           end
           if scc_provider
             escape_char(scc_provider, '"')
-	    cmake_set_target_property(target, "VS_SCC_PROVIDER", scc_provider, out)
+	    cmake_target_set_property(target, "VS_SCC_PROVIDER", scc_provider, out)
           end
         end
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
