@@ -113,3 +113,144 @@ function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_lo
     endif(_vs_scc_provider)
   endif(_vs_scc_projectname)
 endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider)
+
+
+if(NOT V2C_INSTALL_ENABLE)
+  if(NOT V2C_INSTALL_ENABLE_SILENCE_WARNING)
+    # You should make sure to provide install() handling
+    # which is explicitly per-target
+    # (by using our vcproj2cmake helper functions, or externally taking
+    # care of per-target install() handling) - it is very important
+    # to _explicitly_ install any targets we create in converted vcproj2cmake files,
+    # and _not_ simply "copy-install" entire library directories,
+    # since that would cause some target-specific CMake install handling
+    # to get lost (e.g. CMAKE_INSTALL_RPATH tweaking will be done in case of
+    # proper target-specific install() only!)
+    message("WARNING: ${CMAKE_CURRENT_LIST_FILE}: vcproj2cmake-supplied install handling not activated - targets _need_ to be installed properly one way or another!")
+  endif(NOT V2C_INSTALL_ENABLE_SILENCE_WARNING)
+endif(NOT V2C_INSTALL_ENABLE)
+
+# Helper to cleanly evaluate target-specific setting or, failing that,
+# whether target is mentioned in a global list.
+# Example: V2C_INSTALL_ENABLE_${_target}, or
+#          V2C_INSTALL_ENABLE_TARGETS_LIST contains ${_target}
+function(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
+  set(v2c_flag_result false)
+  if(${_var_prefix}_${_target})
+    set(v2c_flag_result true)
+  else(${_var_prefix}_${_target})
+    if(${_var_prefix}_TARGETS_LIST)
+      foreach(v2c_target_current ${${_var_prefix}_TARGETS_LIST})
+        if(v2c_target_current STREQUAL _target)
+          set(v2c_flag_result true)
+          break()
+        endif(v2c_target_current STREQUAL _target)
+      endforeach(enable_target ${${_var_prefix}_TARGETS_LIST})
+    endif(${_var_prefix}_TARGETS_LIST)
+  endif(${_var_prefix}_${_target})
+  set(_result_out ${v2c_flag_result} PARENT_SCOPE)
+endfunction(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
+
+
+# Determines whether a specific target is allowed to be installed.
+function(v2c_target_install_is_enabled_helper _target _install_enabled_out)
+  set(v2c_install_enabled false)
+  # v2c-based installation globally enabled?
+  if(V2C_INSTALL_ENABLE)
+    # First, adopt all-targets setting, then, in case all-targets setting was false,
+    # check whether specific setting is enabled.
+    # Finally, if we think we're allowed to install it,
+    # make sure to check a skip flag _last_, to veto the operation.
+    set(v2c_install_enabled ${V2C_INSTALL_ENABLE_ALL_TARGETS})
+    if(NOT v2c_install_enabled)
+      v2c_target_install_get_flag_helper(${_target} "V2C_INSTALL_ENABLE" v2c_install_enabled)
+    endif(NOT v2c_install_enabled)
+    if(v2c_install_enabled)
+      v2c_target_install_get_flag_helper(${_target} "V2C_INSTALL_SKIP" v2c_install_skip)
+      if(v2c_install_skip)
+        set(v2c_install_enabled false)
+      endif(v2c_install_skip)
+    endif(v2c_install_enabled)
+    if(NOT v2c_install_enabled)
+      message("v2c_target_install: asked to skip install of target ${_target}")
+    endif(NOT v2c_install_enabled)
+    set(_install_enabled_out ${v2c_install_enabled} PARENT_SCOPE)
+  endif(V2C_INSTALL_ENABLE)
+endfunction(v2c_target_install_is_enabled_helper _target)
+
+# Internal variable - lists the parameter types
+# which an install() command supports. Upper-case!!
+set(v2c_install_param_list EXPORT DESTINATION PERMISSIONS CONFIGURATIONS COMPONENT)
+
+# This is the main pretty flexible install() helper function,
+# as used by all vcproj2cmake-generated CMakeLists.txt.
+# It is designed to provide very flexible handling of externally
+# specified configuration data (global settings, or specific to each
+# target).
+# Within the generated CMakeLists.txt file, it is supposed to have a
+# simple invocation of this function, with default behaviour here to be as
+# simple/useful as possible.
+# At a minimum, you should start by enabling V2C_INSTALL_ENABLE and
+# specifying a globally valid V2C_INSTALL_DESTINATION setting
+# (or V2C_INSTALL_DESTINATION_EXECUTABLE and V2C_INSTALL_DESTINATION_SHARED_LIBRARY)
+# at a more higher-level "configure all of my contained projects" place.
+# Ideally, this is done by creating user-interface-visible/configurable
+# cache variables (somewhere in your toplevel project root configuration parts)
+# to hold your destination directories for libraries and executables,
+# then passing down these custom settings into V2C_INSTALL_DESTINATION_* variables.
+function(v2c_target_install _target)
+  # Do external configuration variables indicate
+  # that we're allowed to install this target?
+  v2c_target_install_is_enabled_helper(${_target} v2c_install_enabled)
+  if(NOT ${v2c_install_enabled})
+    return() # bummer...
+  endif(NOT ${v2c_install_enabled})
+
+  # Since install() commands are (probably rightfully) very picky
+  # about incomplete/incorrect parameters, we actually need to conditionally
+  # compile a list of parameters to actually feed into it.
+  #
+  #set(v2c_install_params_list ) # no need to unset (function scope!)
+
+  list(APPEND v2c_install_params_list TARGETS ${_target})
+  foreach(v2c_install_param ${v2c_install_param_list})
+
+    set(v2c_install_param_value )
+
+    # First, query availability of target-specific settings,
+    # then query availability of common settings.
+    if(V2C_INSTALL_${v2c_install_param}_${_target})
+      set(v2c_install_param_value "${V2C_INSTALL_${v2c_install_param}_${_target}}")
+    else(V2C_INSTALL_${v2c_install_param}_${_target})
+
+      # Unfortunately, DESTINATION param needs some extra handling
+      # (want to support per-target-type destinations):
+      if(v2c_install_param STREQUAL DESTINATION)
+        # result is one of STATIC_LIBRARY, MODULE_LIBRARY, SHARED_LIBRARY, EXECUTABLE
+        get_property(target_type TARGET ${_target} PROPERTY TYPE)
+        #message("target ${_target} type ${target_type}")
+        if(V2C_INSTALL_${v2c_install_param}_${target_type})
+          set(v2c_install_param_value "${V2C_INSTALL_${v2c_install_param}_${target_type}}")
+        endif(V2C_INSTALL_${v2c_install_param}_${target_type})
+      endif(v2c_install_param STREQUAL DESTINATION)
+
+      if(NOT v2c_install_param_value)
+        # Adopt global setting if specified:
+        if(V2C_INSTALL_${v2c_install_param})
+          set(v2c_install_param_value "${V2C_INSTALL_${v2c_install_param}}")
+        endif(V2C_INSTALL_${v2c_install_param})
+      endif(NOT v2c_install_param_value)
+    endif(V2C_INSTALL_${v2c_install_param}_${_target})
+    if(v2c_install_param_value)
+      list(APPEND v2c_install_params_list ${v2c_install_param} "${v2c_install_param_value}")
+    else(v2c_install_param_value)
+      # v2c_install_param_value unset? bail out in case of mandatory parameters (DESTINATION)
+      if(v2c_install_param STREQUAL DESTINATION)
+        message(FATAL_ERROR "Variable V2C_INSTALL_${v2c_install_param}_${_target} or V2C_INSTALL_${v2c_install_param} not specified!")
+      endif(v2c_install_param STREQUAL DESTINATION)
+    endif(v2c_install_param_value)
+  endforeach(v2c_install_param ${v2c_install_param_list})
+
+  message(STATUS "v2c_target_install: install(${v2c_install_params_list})")
+  install(${v2c_install_params_list})
+endfunction(v2c_target_install _target)

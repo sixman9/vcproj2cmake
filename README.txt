@@ -39,9 +39,8 @@ CMakeLists.txt files directly wherever needed (since _they_ will be your
 authoritative project information in future on all platforms, instead of the static .vcproj files).
 
 OTOH by using our scripts for one-time-conversion only, you will lose out
-on any of the hopefully substantial improvements done to our
-online conversion script in the future
-(such as automagically provided installation/packaging configuration mechanisms, ...),
+on any of the hopefully substantial further improvements done to our
+online conversion script in the future,
 thus it's a tough initial decision to make on whether to maintain an online conversion
 infrastructure or to go initial-convert only and thus run _all_ sides on a CMake-based
 setup.
@@ -165,17 +164,15 @@ thus it might be even worse trying to start with an Alpha-stage
 
 === Installation/packaging ===
 
-Installation/packaging of a vcproj2cmake-based project is not specially supported yet,
-however I'm currently in the process of setting packaging up locally,
-thus hopefully this will eventually result in a nicely generic, easily usable
-(and optionally overridable!) mechanism which provides a nice Bundle-like
-packaging functionality on all platforms (Mac _and_ Linux, and Windows etc.).
+One should probably use GetPrerequisites.cmake on the main project target
+(i.e., the main executable), this lists all sub project targets already
+and allows to install them from a global configuration part.
 
-I just finished packaging, but in my case all I had to do was to use
-GetPrerequisites.cmake on the main project target (i.e., the main executable),
-this listed all sub project targets already and allowed me to install them
-from a global configuration part.
-Thus there's no special per-project vcproj2cmake handling yet.
+However, since this probably won't be sufficient in many cases,
+there's now a new pretty flexible yet hopefully very easily usable
+v2c_target_install() helper in cmake/Modules/vcproj2cmake_func.cmake.
+For specific information on how to enable its use and configuration fine-tuning,
+see the function comments within that file.
 
 
 === Related projects, alternative setups ===
@@ -239,7 +236,8 @@ Whenever something needs better explanation, just tell me and I'll try to improv
 Dito if you think that some mechanism is poorly implemented (we're still at pre-Beta stage!).
 
 Despite being at Alpha stage, the converter is now more than usable enough
-to successfully build a very large project consisting of several dozen sub projects.
+to successfully build and install/package a very large project consisting of
+several dozen sub projects.
 
 Happy hacking,
 

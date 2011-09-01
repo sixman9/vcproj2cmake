@@ -12,6 +12,18 @@ set(V2C_LOCAL_CONFIG_DIR ./cmake/vcproj2cmake CACHE STRING "Relative path to vcp
 # in such case).
 option(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER "Automatically rebuild converted CMakeLists.txt files upon updates on .vcproj side?" ON)
 
+
+# Global Install Enable flag, to indicate whether one wants
+# to make use of pretty flexible vcproj2cmake-supplied install helper functions.
+# We don't enable it as default setting, since the user should first get a build
+# nicely running before having to worry about installation-related troubles...
+set(v2c_install_enable_default_setting false)
+option(V2C_INSTALL_ENABLE "Enable flexible vcproj2cmake-supplied installation handling of converted targets?" ${v2c_install_enable_default_setting})
+
+# In case installation is allowed, should we install all targets by default?
+set(V2C_INSTALL_ENABLE_ALL_TARGETS true)
+
+
 # Pre-define hook include filenames
 # (may be redefined/overridden by local content!)
 set(V2C_HOOK_PROJECT ${V2C_LOCAL_CONFIG_DIR}/hook_project.txt)

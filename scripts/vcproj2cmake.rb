@@ -366,6 +366,14 @@ def cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
   puts_ind(out, "endif(MSVC)")
 end
 
+# Installs a target, by calling a very flexible and configurable helper
+# function implemented in vcproj2cmake_func.cmake.
+def cmake_target_install(target, out)
+  out.puts
+  cmake_generate_vcproj2cmake_func_comment(out)
+  puts_ind(out, "v2c_target_install(#{target})")
+end
+
 def vc8_parse_file(project, file, arr_sources)
   projname = project.attributes["Name"]
   f = normalize(file.attributes["RelativePath"])
@@ -966,6 +974,7 @@ File.open(tmpfile.path, "w") { |out|
           $myindent += 2
           cmake_target_set_property_compile_definitions(target, config_name, arr_defines, map_defines, out)
           cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
+          cmake_target_install(target, out)
           $myindent -= 2
           puts_ind(out, "endif(TARGET #{target})")
         end
