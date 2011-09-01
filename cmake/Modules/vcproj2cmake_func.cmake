@@ -93,3 +93,23 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
 #  add_dependencies(update_cmakelists_abort_build update_cmakelists)
   endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 endfunction(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
+
+
+# This function will set up target properties gathered from
+# Visual Studio Source Control Management (SCM) elements.
+function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider)
+  #message(STATUS
+  #  "v2c_target_set_properties_vs_scc: target ${_target}"
+  #  "VS_SCC_PROJECTNAME ${_vs_scc_projectname} VS_SCC_LOCALPATH ${_vs_scc_localpath}\n"
+  #  "VS_SCC_PROVIDER ${_vs_scc_provider}"
+  #)
+  if(_vs_scc_projectname)
+    set_property(TARGET ${_target} PROPERTY VS_SCC_PROJECTNAME "${_vs_scc_projectname}")
+    if(_vs_scc_localpath)
+      set_property(TARGET ${_target} PROPERTY VS_SCC_LOCALPATH "${_vs_scc_localpath}")
+    endif(_vs_scc_localpath)
+    if(_vs_scc_provider)
+      set_property(TARGET ${_target} PROPERTY VS_SCC_PROVIDER "${_vs_scc_provider}")
+    endif(_vs_scc_provider)
+  endif(_vs_scc_projectname)
+endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider)

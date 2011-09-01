@@ -166,6 +166,10 @@ $have_build_units = false
 # global variable to indicate whether we want debug output or not
 $debug = false
 
+### definitely internal helpers ###
+$vcproj2cmake_func_cmake = "vcproj2cmake_func.cmake"
+
+
 def puts_debug(str)
   if $debug
     puts str
@@ -274,6 +278,12 @@ def parse_platform_conversions(platform_defs, arr_defs, map_defs)
       end
     end
   }
+end
+
+def cmake_generate_vcproj2cmake_func_comment(chan)
+  if $v2c_generated_comments_level >= 2
+    puts_ind(chan, "# See function implementation/docs in #{$v2c_module_path_root}/#{$vcproj2cmake_func_cmake}")
+  end
 end
 
 def cmake_write_build_attributes(cmake_command, element_prefix, out, arr_defs, map_defs, cmake_command_arg)
@@ -964,20 +974,20 @@ File.open(tmpfile.path, "w") { |out|
       # we can handle the following target stuff outside per-config handling (reason: see comment above)
       if not target.nil?
         # Make sure to keep CMake Name/Keyword (PROJECT_LABEL / VS_KEYWORD properties) in our converted file, too...
-	# Hrmm, both project() _and_ PROJECT_LABEL reference the same project_name?? WEIRD.
-	out.puts
-	# no need to enclose this within "if(TARGET ...)" here since at this point
-	# we really _should_ have a target available,
-	# otherwise everything is broken anyway...
-	cmake_target_set_property(target, "PROJECT_LABEL", project_name, out)
-	project_keyword = project.attributes["Keyword"]
+        # Hrmm, both project() _and_ PROJECT_LABEL reference the same project_name?? WEIRD.
+        out.puts
+        # no need to enclose this within "if(TARGET ...)" here since at this point
+        # we really _should_ have a target available,
+        # otherwise everything is broken anyway...
+        cmake_target_set_property(target, "PROJECT_LABEL", project_name, out)
+        project_keyword = project.attributes["Keyword"]
         if not project_keyword.nil?
-	  cmake_target_set_property(target, "VS_KEYWORD", project_keyword, out)
+          cmake_target_set_property(target, "VS_KEYWORD", project_keyword, out)
         end
 
         # keep source control integration in our conversion!
         # FIXME: does it really work? Then reply to
-        # http://public.kitware.com/mantis/view.php?id=10237 !!
+        # http://www.itk.org/Bug/view.php?id=10237 !!
         if not project.attributes["SccProjectName"].nil?
           scc_project_name = project.attributes["SccProjectName"].clone
           # hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
@@ -989,28 +999,31 @@ File.open(tmpfile.path, "w") { |out|
           # won't fail on us... (but this bogus escaping within
           # CMakeLists.txt space might lead to severe trouble
           # with _other_ IDE generators which cannot deal with a raw "&quot;").
+          # If so, one would need to extend v2c_target_set_properties_vs_scc()
+          # to have a CMAKE_GENERATOR branch check, to support all cases.
+          # Or one could argue that the escaping should better be done on
+          # CMake-side code (i.e. in v2c_target_set_properties_vs_scc()).
           # Note that perhaps we should also escape all other chars
           # as in CMake's EscapeForXML() method.
           scc_project_name.gsub!(/"/, "&quot;")
-	  # hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
-	  # exist, too... (one project had SccProvider missing)
-	  if not project.attributes["SccLocalPath"].nil?
+          # hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+          # exist, too... (one project had SccProvider missing)
+          if not project.attributes["SccLocalPath"].nil?
             scc_local_path = project.attributes["SccLocalPath"].clone
-	  end
-	  if not project.attributes["SccProvider"].nil?
+          end
+          if not project.attributes["SccProvider"].nil?
             scc_provider = project.attributes["SccProvider"].clone
-	  end
-	  out.puts
-	  cmake_target_set_property(target, "VS_SCC_PROJECTNAME", scc_project_name, out)
+          end
           if scc_local_path
             escape_backslash(scc_local_path)
             escape_char(scc_local_path, '"')
-	    cmake_target_set_property(target, "VS_SCC_LOCALPATH", scc_local_path, out)
           end
           if scc_provider
             escape_char(scc_provider, '"')
-	    cmake_target_set_property(target, "VS_SCC_PROVIDER", scc_provider, out)
           end
+          out.puts
+          cmake_generate_vcproj2cmake_func_comment(out)
+          puts_ind(out, "v2c_target_set_properties_vs_scc(#{target} \"#{scc_project_name}\" \"#{scc_local_path}\" \"#{scc_provider}\")")
         end
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # not target.nil?
@@ -1031,6 +1044,7 @@ File.open(tmpfile.path, "w") { |out|
       # v2c_rebuild_on_update() should be as much of a 1:1 passthrough of
       # the input argument to this ruby script execution as possible/suitable,
       # since invocation arguments of this script on rebuild should be (roughly) identical.
+      cmake_generate_vcproj2cmake_func_comment(out)
       puts_ind(out, "v2c_rebuild_on_update(#{project_name}")
       puts_ind(out, "  \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\"")
       puts_ind(out, "  ${CMAKE_CURRENT_LIST_FILE} \"${V2C_SCRIPT_LOCATION}\" \"${V2C_MASTER_PROJECT_DIR}\")")
