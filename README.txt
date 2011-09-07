@@ -25,6 +25,14 @@ Usage (very rough summary), with Linux/Makefile generator:
   - cmake -DCMAKE_BUILD_TYPE=Debug ../[PROJECT_NAME] (alternatively: ccmake ../[PROJECT_NAME])
   - time make -j3 -k
 
+===========================================================================
+Usage, easy mode:
+- run install_me_fully_guided.rb or install_me_fully_guided.sh
+- this will interactively prompt you for everything
+- ideally you will end up with a completely built CMake-enabled build tree
+  of your .vcproj-based source tree if everything goes fine
+===========================================================================
+
 
 NOTE: first thing to state is:
 if you do not have any users who are hooked on keep using
