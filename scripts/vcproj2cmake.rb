@@ -491,6 +491,14 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
       puts "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
       next
     end
+    scname = subfilter.attributes["Name"]
+    if not scname.nil? and scname == "Generated Files"
+      # Hmm, how are we supposed to handle Generated Files?
+      # Most likely we _are_ supposed to add such files
+      # and set_property(SOURCE ... GENERATED) on it.
+      puts "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
+      next
+    end
     if files_str[:arr_sub_filters].nil?
       files_str[:arr_sub_filters] = Array.new()
     end
