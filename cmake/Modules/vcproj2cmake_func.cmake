@@ -148,7 +148,7 @@ function(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
       endforeach(enable_target ${${_var_prefix}_TARGETS_LIST})
     endif(${_var_prefix}_TARGETS_LIST)
   endif(${_var_prefix}_${_target})
-  set(_result_out ${v2c_flag_result} PARENT_SCOPE)
+  set(${_result_out} ${v2c_flag_result} PARENT_SCOPE)
 endfunction(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
 
 
@@ -174,8 +174,8 @@ function(v2c_target_install_is_enabled_helper _target _install_enabled_out)
     if(NOT v2c_install_enabled)
       message("v2c_target_install: asked to skip install of target ${_target}")
     endif(NOT v2c_install_enabled)
-    set(_install_enabled_out ${v2c_install_enabled} PARENT_SCOPE)
   endif(V2C_INSTALL_ENABLE)
+  set(${_install_enabled_out} ${v2c_install_enabled} PARENT_SCOPE)
 endfunction(v2c_target_install_is_enabled_helper _target)
 
 # Internal variable - lists the parameter types
