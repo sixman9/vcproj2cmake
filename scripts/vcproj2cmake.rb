@@ -982,11 +982,15 @@ File.open(tmpfile.path, "w") { |out|
           $myindent += 2
           cmake_target_set_property_compile_definitions(target, config_name, arr_defines, map_defines, out)
           cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
-          cmake_target_install(target, out)
           $myindent -= 2
           puts_ind(out, "endif(TARGET #{target})")
         end
       } # [END per-config handling]
+
+      # Since installation handling is not influenced by config handling
+      # (right!?), it should be outside per-config section to prevent
+      # duplication.
+      cmake_target_install(target, out)
 
       # we can handle the following target stuff outside per-config handling (reason: see comment above)
       if not target.nil?
