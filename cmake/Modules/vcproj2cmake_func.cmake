@@ -27,7 +27,7 @@ file(GLOB root_mappings "${CMAKE_SOURCE_DIR}/${v2c_mappings_files}")
 # by the original converter script in case any relevant files changed.
 function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
   if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
-    message(STATUS "${_target_name}: installing ${_cmakelists} rebuilder (watching ${_vcproj})")
+    message(STATUS "${_target_name}: providing ${_cmakelists} rebuilder (watching ${_vcproj})")
     if(NOT v2c_ruby) # avoid repeated checks (see cmake --trace)
       find_program(v2c_ruby NAMES ruby)
       if(NOT v2c_ruby)
