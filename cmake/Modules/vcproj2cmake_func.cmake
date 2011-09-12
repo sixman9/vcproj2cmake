@@ -134,7 +134,7 @@ endif(NOT V2C_INSTALL_ENABLE)
 # whether target is mentioned in a global list.
 # Example: V2C_INSTALL_ENABLE_${_target}, or
 #          V2C_INSTALL_ENABLE_TARGETS_LIST contains ${_target}
-function(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
+function(v2c_target_install_get_flag__helper _target _var_prefix _result_out)
   set(v2c_flag_result false)
   if(${_var_prefix}_${_target})
     set(v2c_flag_result true)
@@ -149,11 +149,11 @@ function(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
     endif(${_var_prefix}_TARGETS_LIST)
   endif(${_var_prefix}_${_target})
   set(${_result_out} ${v2c_flag_result} PARENT_SCOPE)
-endfunction(v2c_target_install_get_flag_helper _target _var_prefix _result_out)
+endfunction(v2c_target_install_get_flag__helper _target _var_prefix _result_out)
 
 
 # Determines whether a specific target is allowed to be installed.
-function(v2c_target_install_is_enabled_helper _target _install_enabled_out)
+function(v2c_target_install_is_enabled__helper _target _install_enabled_out)
   set(v2c_install_enabled false)
   # v2c-based installation globally enabled?
   if(V2C_INSTALL_ENABLE)
@@ -163,10 +163,10 @@ function(v2c_target_install_is_enabled_helper _target _install_enabled_out)
     # make sure to check a skip flag _last_, to veto the operation.
     set(v2c_install_enabled ${V2C_INSTALL_ENABLE_ALL_TARGETS})
     if(NOT v2c_install_enabled)
-      v2c_target_install_get_flag_helper(${_target} "V2C_INSTALL_ENABLE" v2c_install_enabled)
+      v2c_target_install_get_flag__helper(${_target} "V2C_INSTALL_ENABLE" v2c_install_enabled)
     endif(NOT v2c_install_enabled)
     if(v2c_install_enabled)
-      v2c_target_install_get_flag_helper(${_target} "V2C_INSTALL_SKIP" v2c_install_skip)
+      v2c_target_install_get_flag__helper(${_target} "V2C_INSTALL_SKIP" v2c_install_skip)
       if(v2c_install_skip)
         set(v2c_install_enabled false)
       endif(v2c_install_skip)
@@ -176,7 +176,7 @@ function(v2c_target_install_is_enabled_helper _target _install_enabled_out)
     endif(NOT v2c_install_enabled)
   endif(V2C_INSTALL_ENABLE)
   set(${_install_enabled_out} ${v2c_install_enabled} PARENT_SCOPE)
-endfunction(v2c_target_install_is_enabled_helper _target)
+endfunction(v2c_target_install_is_enabled__helper _target)
 
 # Internal variable - lists the parameter types
 # which an install() command supports. Upper-case!!
@@ -206,7 +206,7 @@ function(v2c_target_install _target)
 
   # Do external configuration variables indicate
   # that we're allowed to install this target?
-  v2c_target_install_is_enabled_helper(${_target} v2c_install_enabled)
+  v2c_target_install_is_enabled__helper(${_target} v2c_install_enabled)
   if(NOT ${v2c_install_enabled})
     return() # bummer...
   endif(NOT ${v2c_install_enabled})
