@@ -9,8 +9,8 @@ then you certainly get to keep both parts.
 ----------
 
 
-vcproj2cmake has been fully tested with CMake 2.6.x only - while some 2.8.x testing has been done,
-there may be some rough spots.
+vcproj2cmake has been strongly tested with CMake 2.6.x only - while some 2.8.x testing has been done,
+support for this version might still be a bit weak.
 
 
 Usage (very rough summary), with Linux/Makefile generator:
