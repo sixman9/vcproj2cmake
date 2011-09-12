@@ -653,15 +653,12 @@ File.open(tmpfile.path, "w") { |out|
     # "export" our internal $v2c_config_dir_local variable (to be able to reference it in CMake scripts as well)
     new_puts_ind(out, "set(V2C_CONFIG_DIR_LOCAL \"#{$v2c_config_dir_local}\")")
 
+    out.puts
     if $v2c_generated_comments_level >= 2
-      new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake helper functions")
+      puts_ind(out, "# include the main file for pre-defined vcproj2cmake helper functions")
+      puts_ind(out, "# This module will also include the configuration settings definitions module")
     end
     puts_ind(out, "include(vcproj2cmake_func)")
-
-    if $v2c_generated_comments_level >= 2
-      new_puts_ind(out, "# include the main file for pre-defined vcproj2cmake definitions")
-    end
-    puts_ind(out, "include(vcproj2cmake_defs)")
 
     # this CMakeLists.txt-global optional include could be used e.g.
     # to skip the entire build of this file on certain platforms:

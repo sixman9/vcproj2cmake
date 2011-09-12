@@ -9,6 +9,10 @@ if(V2C_FUNC_DEFINED)
 endif(V2C_FUNC_DEFINED)
 set(V2C_FUNC_DEFINED true)
 
+# Include main file for vcproj2cmake configuration settings
+# (to be customized by user as needed)
+include(vcproj2cmake_defs)
+
 
 # Define a couple global constant settings
 # (make sure to keep outside of repeatedly invoked functions below)
