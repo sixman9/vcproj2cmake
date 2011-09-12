@@ -199,6 +199,11 @@ set(v2c_install_param_list EXPORT DESTINATION PERMISSIONS CONFIGURATIONS COMPONE
 # to hold your destination directories for libraries and executables,
 # then passing down these custom settings into V2C_INSTALL_DESTINATION_* variables.
 function(v2c_target_install _target)
+  if(NOT TARGET ${_target})
+    message("${_target} not a valid target!?")
+    return()
+  endif(NOT TARGET ${_target})
+
   # Do external configuration variables indicate
   # that we're allowed to install this target?
   v2c_target_install_is_enabled_helper(${_target} v2c_install_enabled)
