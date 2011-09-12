@@ -667,7 +667,7 @@ File.open(tmpfile.path, "w") { |out|
     # to skip the entire build of this file on certain platforms:
     # if(PLATFORM) message(STATUS "not supported") return() ...
     # (note that we appended CMAKE_MODULE_PATH _prior_ to this include()!)
-    new_puts_ind(out, "include(${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt OPTIONAL)")
+    new_puts_ind(out, "include(\"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt\" OPTIONAL)")
 
     doc.elements.each("VisualStudioProject") { |project|
 
@@ -718,7 +718,7 @@ File.open(tmpfile.path, "w") { |out|
         puts_ind(out, "# the _LIBRARIES / _INCLUDE_DIRS mappings created")
         puts_ind(out, "# by your include/dependency map files.")
       end
-      puts_ind(out, "include(${V2C_HOOK_PROJECT} OPTIONAL)")
+      puts_ind(out, "include(\"${V2C_HOOK_PROJECT}\" OPTIONAL)")
 
       main_files = Files_str.new()
       project.elements.each("Files") { |files|
@@ -741,9 +741,9 @@ File.open(tmpfile.path, "w") { |out|
       # AFAIK .vcproj implicitly adds the project root to standard include path
       # (for automatic stdafx.h resolution etc.), thus add this
       # (and make sure to add it with high priority, i.e. use BEFORE).
-      new_puts_ind(out, "include_directories(BEFORE ${PROJECT_SOURCE_DIR})")
+      new_puts_ind(out, "include_directories(BEFORE \"${PROJECT_SOURCE_DIR}\")")
 
-      new_puts_ind(out, "include(${V2C_HOOK_POST_SOURCES} OPTIONAL)")
+      new_puts_ind(out, "include(\"${V2C_HOOK_POST_SOURCES}\" OPTIONAL)")
 
       # ARGH, we have an issue with CMake not being fully up to speed with
       # multi-configuration generators (e.g. .vcproj):
@@ -863,7 +863,7 @@ File.open(tmpfile.path, "w") { |out|
           new_puts_ind(out, "# hook include after all definitions have been made")
           puts_ind(out, "# (but _before_ target is created using the source list!)")
         end
-        puts_ind(out, "include(${V2C_HOOK_POST_DEFINITIONS} OPTIONAL)")
+        puts_ind(out, "include(\"${V2C_HOOK_POST_DEFINITIONS}\" OPTIONAL)")
 
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
@@ -967,7 +967,7 @@ File.open(tmpfile.path, "w") { |out|
         if $v2c_generated_comments_level >= 1
           new_puts_ind(out, "# e.g. to be used for tweaking target properties etc.")
         end
-        puts_ind(out, "include(${V2C_HOOK_POST_TARGET} OPTIONAL)")
+        puts_ind(out, "include(\"${V2C_HOOK_POST_TARGET}\" OPTIONAL)")
 
         $myindent -= 2
         puts_ind(out, "endif(#{build_type_condition})")
@@ -1068,9 +1068,9 @@ File.open(tmpfile.path, "w") { |out|
       cmake_generate_vcproj2cmake_func_comment(out)
       puts_ind(out, "v2c_rebuild_on_update(#{project_name}")
       puts_ind(out, "  \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\"")
-      puts_ind(out, "  ${CMAKE_CURRENT_LIST_FILE} \"${V2C_SCRIPT_LOCATION}\" \"${V2C_MASTER_PROJECT_DIR}\")")
+      puts_ind(out, "  \"${CMAKE_CURRENT_LIST_FILE}\" \"${V2C_SCRIPT_LOCATION}\" \"${V2C_MASTER_PROJECT_DIR}\")")
     }
-    new_puts_ind(out, "include(${V2C_HOOK_POST} OPTIONAL)")
+    new_puts_ind(out, "include(\"${V2C_HOOK_POST}\" OPTIONAL)")
   }
   # Close file, since Fileutils.mv on an open file will barf on XP
   out.close
