@@ -6,7 +6,7 @@
 
 
 # if the call came via symlink, then use its target instead:
-arg="${0}"; [[ -L "${0}" ]] && arg="$(stat -f '%Y' "${0}")"
+arg="${0}"; [ -L "${0}" ] && arg="$(stat -f '%Y' "${0}")"
 
 # now do exactly as chriswaco + LN2 said (minor syntax tweaks by me):
 script_location="$(2>/dev/null cd "${arg%/*}" >&2; echo "$(pwd -P)/${arg##*/}")"

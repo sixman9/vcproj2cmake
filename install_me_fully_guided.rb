@@ -21,16 +21,18 @@ exit 1
 
 
 
+$stdout.puts "Verifying cmake binary availability."
 output = `cmake --version`
 if not $?.success?
   $stderr.puts "ERROR: cmake binary not found, aborting - you probably need to install a CMake package!"
   exit 1
 end
 
+$stdout.puts "Creating build directory for guided installation."
 build_install_dir = "#{script_path}/build_install"
 if not File.exist?(build_install_dir)
   if not FileUtils.mkdir_p build_install_dir
-    $stderr.puts "ERROR: couldn't create build directory for guided installation, aborting!"
+    $stderr.puts "ERROR: couldn't create build directory, aborting!"
     exit 1
   end
 end
@@ -40,11 +42,17 @@ if not Dir.chdir(build_install_dir)
   exit 1
 end
 
-$stdout.puts "Preparing the build tree (CMake configure run) which is required for installation of vcproj2cmake components"
+# I'm not sure whether it's a good idea to have Subversion fetching done
+# as a build-time rule. This requires us to re-configure things multiple
+# times (to provide the install target once all preconditions are
+# fulfilled).
+# The (possibly better) alternative would be to do SVN fetching at configure
+# time.
 
+$stdout.puts "Preparing the build tree (CMake configure run) which is required for installation of vcproj2cmake components"
 system "ccmake ../"
 if not $?.success?
-  $stderr.puts "ERROR: invocation of ccmake failed, aborting!"
+  $stderr.puts "ERROR: invocation of ccmake failed, aborting! - perhaps you need to install the ccmake package (Debian Linux: cmake-curses-gui)"
   exit 1
 end
 
@@ -64,6 +72,18 @@ $stderr.puts
 
 # TODO: should check whether CMAKE_GENERATOR is Unix Makefiles,
 # else do non-make handling below.
+
+system "make all"
+if not $?.success?
+  $stderr.puts "ERROR: execution of all target failed!"
+  exit 1
+end
+
+system "cmake ."
+if not $?.success?
+  $stderr.puts
+  $stderr.puts "ERROR: second CMake configure run failed, aborting!"
+end
 
 system "make install"
 if not $?.success?

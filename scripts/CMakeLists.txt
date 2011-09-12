@@ -1,6 +1,6 @@
-if(NOT v2c_scripts_destination)
-  message(FATAL_ERROR "no destination directory for scripts given!")
-endif(NOT v2c_scripts_destination)
+if(NOT v2c_scripts_install_dir)
+  message(FATAL_ERROR "no installation directory for scripts given!")
+endif(NOT v2c_scripts_install_dir)
 
 set(v2c_script_converter "vcproj2cmake.rb")
 set(v2c_script_converter_recursive "vcproj2cmake_recursive.rb")
@@ -14,11 +14,11 @@ endif(NOT RUBY_EXECUTABLE)
 install(PROGRAMS
   "${v2c_script_converter}"
   "${v2c_script_converter_recursive}"
-  DESTINATION "${v2c_scripts_destination}"
+  DESTINATION "${v2c_scripts_install_dir}"
 )
 install(FILES
   "${v2c_script_converter_settings}"
-  DESTINATION "${v2c_scripts_destination}"
+  DESTINATION "${v2c_scripts_install_dir}"
 )
 
 # This function will be invoked _post_-install of the project.
@@ -26,9 +26,10 @@ function(v2c_scripts_convert_project_recursive _proj_source_root)
   set(stamp_file_dir "${CMAKE_CURRENT_BINARY_DIR}/stamps")
   file(MAKE_DIRECTORY "${stamp_file_dir}")
   set(conversion_stamp "${stamp_file_dir}/vcproj_converted.stamp")
-  # should re-run this conversion target after each CMake configure run:
+  # Should have this conversion target properly re-run
+  # after each potential change due to CMake configure run:
   file(REMOVE "${conversion_stamp}")
-  set(v2c_vcproj2cmake_recursive_bin "${v2c_scripts_destination}/vcproj2cmake_recursive.rb")
+  set(v2c_vcproj2cmake_recursive_bin "${CMAKE_INSTALL_PREFIX}/${v2c_scripts_install_dir}/vcproj2cmake_recursive.rb")
   add_custom_command(OUTPUT "${conversion_stamp}"
     COMMAND "${RUBY_EXECUTABLE}" "${v2c_vcproj2cmake_recursive_bin}"
     COMMAND "${CMAKE_COMMAND}" -E touch "${conversion_stamp}"
