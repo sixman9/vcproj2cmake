@@ -211,9 +211,9 @@ function(v2c_target_install _target)
   # Do external configuration variables indicate
   # that we're allowed to install this target?
   v2c_target_install_is_enabled__helper(${_target} v2c_install_enabled)
-  if(NOT ${v2c_install_enabled})
+  if(NOT v2c_install_enabled)
     return() # bummer...
-  endif(NOT ${v2c_install_enabled})
+  endif(NOT v2c_install_enabled)
 
   # Since install() commands are (probably rightfully) very picky
   # about incomplete/incorrect parameters, we actually need to conditionally
