@@ -49,10 +49,17 @@ end
 # The (possibly better) alternative would be to do SVN fetching at configure
 # time.
 
+# Hmm, we probably should also support the Qt-based GUI.
+output = `ccmake --help`
+if not $?.success?
+  $stderr.puts "ERROR: couldn't run ccmake - perhaps it is not installed. On Debian-based Linux, installing the cmake-curses-gui package might help."
+  exit 1
+end
+
 $stdout.puts "Preparing the build tree (CMake configure run) which is required for installation of vcproj2cmake components"
 system "ccmake ../"
 if not $?.success?
-  $stderr.puts "ERROR: invocation of ccmake failed, aborting! - perhaps you need to install the ccmake package (Debian Linux: cmake-curses-gui)"
+  $stderr.puts "ERROR: invocation of ccmake failed, aborting!"
   exit 1
 end
 
