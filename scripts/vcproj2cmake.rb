@@ -989,7 +989,9 @@ File.open(tmpfile.path, "w") { |out|
       # Since installation handling is not influenced by config handling
       # (right!?), it should be outside per-config section to prevent
       # duplication.
-      cmake_target_install(target, out)
+      if not target.nil?
+        cmake_target_install(target, out)
+      end
 
       # we can handle the following target stuff outside per-config handling (reason: see comment above)
       if not target.nil?
