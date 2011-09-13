@@ -358,11 +358,13 @@ def cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
   config_name_upper = cmake_get_config_name_upcase(config_name)
   # original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
   new_puts_ind(out, "if(MSVC)")
+  $myindent += 2
   puts_ind(out, "set_property(TARGET #{target} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}")
   arr_flags.each do |curr_value|
     puts_ind(out, "  #{curr_value}")
   end
   puts_ind(out, ")")
+  $myindent -= 2
   puts_ind(out, "endif(MSVC)")
 end
 
