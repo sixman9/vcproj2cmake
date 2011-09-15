@@ -3,16 +3,17 @@
 
 # Some helper functions to be used by all converted projects in the tree
 
-# avoid useless repeated parsing
+# First, include main file (to be customized by user as needed),
+# to have important vcproj2cmake configuration settings
+# re-defined per each new vcproj-converted project.
+include(vcproj2cmake_defs)
+
+
+# Avoid useless repeated parsing of static-data function definitions
 if(V2C_FUNC_DEFINED)
   return()
 endif(V2C_FUNC_DEFINED)
 set(V2C_FUNC_DEFINED true)
-
-# Include main file for vcproj2cmake configuration settings
-# (to be customized by user as needed)
-include(vcproj2cmake_defs)
-
 
 # Define a couple global constant settings
 # (make sure to keep outside of repeatedly invoked functions below)
