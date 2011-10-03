@@ -81,6 +81,48 @@ Example hook scripts to be used by every sub project in your project hierarchy t
 such customizations are provided in our repository's sample/ directory.
 
 
+== Hook scripts Best Practice ==
+
+Well, I'm not sure whether this already deserves being called "Best
+Practice", but...
+
+Since specific hook scripts will get included repeatedly
+(by multiple .vcproj-based projects, possibly located in subsequent
+sub directories, i.e. ending up in _same_ CMake scope!!),
+it's probably a very good idea to let the initial hook script
+(probably the V2C_HOOK_PROJECT one) include a _common_ CMake module file
+(to be located in our custom-configured CMake module path)
+which then provides CMake functions which are _generic_.
+By centrally defining such common functions in this module
+(and thus providing them in subsequent CMake scope),
+they can then be invoked (referenced) by each hook point
+(or a subsequent one!) as needed,
+each time supplying project-_specific_ function variables as needed.
+And since that CMake module is used only in a generic way (to define
+those generic functions) and thus does _not_ dirtily fumble any project-specific
+state, it is sufficient to have this _static_ content of this module
+get parsed _once_ only despite actually having it include(myModule):d many times.
+This can be achieved by implementing an include protection guard such as
+
+if(my_module_parsed) # Avoid repeated parsing of this generic (non-state-modifying) function module
+  return()
+endif(my_module_parsed)
+set(my_module_parsed true)
+
+(with the effect of drastically shortened output of
+"cmake --trace ." as executed in ${CMAKE_BINARY_DIR}).
+
+
+One could continue by defining generic functions such as
+
+adapt_my_project_target_dir(_target _subdir)
+
+which could then be invoked via hook points
+in a very project-specific way, e.g.
+adapt_my_project_target_dir(foobar "${foobar_SOURCE_DIR}/doc/html")
+
+
+
 === mappings files (definitions, dependencies, library directories, include directories) ===
 
 Certain compiler defines in your projects may be Win32-only,
