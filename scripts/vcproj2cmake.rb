@@ -858,8 +858,9 @@ File.open(tmpfile.path, "w") { |out|
         config_type = config.attributes["ConfigurationType"].to_i
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
+        out.puts
         if $v2c_generated_comments_level >= 1
-          new_puts_ind(out, "# hook include after all definitions have been made")
+          puts_ind(out, "# hook include after all definitions have been made")
           puts_ind(out, "# (but _before_ target is created using the source list!)")
         end
         puts_ind(out, "include(\"${V2C_HOOK_POST_DEFINITIONS}\" OPTIONAL)")
@@ -963,8 +964,9 @@ File.open(tmpfile.path, "w") { |out|
           end # not target.nil?
         end # not arr_sub_sources.empty?
 
+        out.puts
         if $v2c_generated_comments_level >= 1
-          new_puts_ind(out, "# e.g. to be used for tweaking target properties etc.")
+          puts_ind(out, "# e.g. to be used for tweaking target properties etc.")
         end
         puts_ind(out, "include(\"${V2C_HOOK_POST_TARGET}\" OPTIONAL)")
 
@@ -1053,7 +1055,11 @@ File.open(tmpfile.path, "w") { |out|
       # Add line to invoke the automatic rebuilder on CMakeLists.txt changes,
       # and add handling of a script file location variable, to enable users
       # to override the script location if needed.
-      new_puts_ind(out, "if(NOT V2C_SCRIPT_LOCATION)")
+      out.puts
+      if $v2c_generated_comments_level >= 1
+        puts_ind(out, "# user override mechanism (allow defining custom location of script)")
+      end
+      puts_ind(out, "if(NOT V2C_SCRIPT_LOCATION)")
       $myindent += 2
       # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
       # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
