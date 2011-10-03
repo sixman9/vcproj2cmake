@@ -689,7 +689,7 @@ File.open(tmpfile.path, "w") { |out|
       #cmake_write_configuration_types(configuration_types, out)
 
       # TODO: figure out language type (C CXX etc.) and add it to project() command
-      new_puts_ind(out, "project( #{project_name} )")
+      new_puts_ind(out, "project(#{project_name})")
 
       ## sub projects will inherit, and we _don't_ want that...
       # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
