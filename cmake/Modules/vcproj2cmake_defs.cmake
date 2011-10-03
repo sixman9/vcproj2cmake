@@ -1,4 +1,6 @@
-# reset common variables used by all converted CMakeLists.txt files
+# Reset common variables used by all converted CMakeLists.txt files
+# (these are supposed to be defined anew by each subproject based on a
+# converted CMakeLists.txt)
 set(V2C_LIBS )
 set(V2C_LIB_DIRS )
 set(V2C_SOURCES )
