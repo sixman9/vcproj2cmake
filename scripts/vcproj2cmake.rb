@@ -801,6 +801,14 @@ File.open(tmpfile.path, "w") { |out|
         # 0 == no MFC
         # 1 == static MFC
         # 2 == shared MFC
+	# FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
+	# --> we probably should _not_ do case insensitive matching on
+	# attributes (see e.g.
+	# http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
+	# but rather implement version-specific parser classes due to
+	# the slightly differing XML configurations
+	# (e.g. do this via a common base class, then add derived ones
+	# to implement any differences).
         config_use_of_mfc = config.attributes["UseOfMFC"].to_i
         if config_use_of_mfc > 0
           new_puts_ind(out, "set(CMAKE_MFC_FLAG #{config_use_of_mfc})")
@@ -834,18 +842,38 @@ File.open(tmpfile.path, "w") { |out|
           if compiler.attributes["PreprocessorDefinitions"]
 
             compiler.attributes["PreprocessorDefinitions"].split(";").sort.each { |s|
-            str_define, str_setting = s.strip.split(/=/)
-            if str_setting.nil?
+              str_define, str_setting = s.strip.split(/=/)
+              if str_setting.nil?
                     arr_defines.push(str_define)
-            else
-              if str_setting =~ /[\(\)]+/
-                escape_char(str_setting, '\\(')
-                escape_char(str_setting, '\\)')
+              else
+                if str_setting =~ /[\(\)]+/
+                  escape_char(str_setting, '\\(')
+                  escape_char(str_setting, '\\)')
+                end
+                arr_defines.push("#{str_define}=#{str_setting}")
               end
-                    arr_defines.push("#{str_define}=#{str_setting}")
-            end
             }
 
+          end
+
+          if compiler.attributes["AdditionalOptions"]
+            additionalOptions = compiler.attributes["AdditionalOptions"]
+	    # Oh well, we might eventually want to provide a full-scale
+	    # translation of various compiler switches to their
+	    # counterparts on compilers of various platforms, but for
+	    # now, let's simply directly pass them on to the compiler on the
+	    # Win32 side.
+            if not additionalOptions.nil?
+	      # Query WIN32 instead of MSVC, since AFAICS there's nothing in the
+	      # .vcproj to indicate tool specifics, thus these seem to
+	      # be settings for ANY PARTICULAR tool that is configured
+	      # on the Win32 side (.vcproj in general).
+              new_puts_ind(out, "if(WIN32)")
+	        $myindent += 2
+	        puts_ind(out, "set_property(DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{additionalOptions})")
+	        $myindent -= 2
+              puts_ind(out, "endif(WIN32)")
+            end
           end
 
           if config_use_of_mfc == 2
