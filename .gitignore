@@ -1,0 +1,2 @@
+# ignore CMake build tree for fully guided installation
+build_install/*
