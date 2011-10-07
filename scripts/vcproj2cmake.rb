@@ -1,4 +1,4 @@
-#!/usr/bin/ruby
+#!/usr/bin/env ruby
 
 # Given a Visual Studio project, create a CMakeLists.txt file which optionally
 # allows for ongoing side-by-side operation (e.g. on Linux, Mac)
