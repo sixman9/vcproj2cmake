@@ -729,9 +729,7 @@ File.open(tmpfile.path, "w") { |out|
       	vc8_parse_file_list(project, files, main_files)
       }
       arr_sub_sources = Array.new()
-      $myindent += 2
       cmake_write_file_list(project, main_files, nil, arr_sub_sources, out)
-      $myindent -= 2
 
       if not arr_sub_sources.empty?
         # add a ${V2C_SOURCES} variable to the list, to be able to append
