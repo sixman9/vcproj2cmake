@@ -26,9 +26,9 @@ file(GLOB root_mappings "${CMAKE_SOURCE_DIR}/${v2c_mappings_files}")
 
 # Function to automagically rebuild our converted CMakeLists.txt
 # by the original converter script in case any relevant files changed.
-function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
+function(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _master_proj_dir)
   if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
-    message(STATUS "${_target_name}: providing ${_cmakelists} rebuilder (watching ${_vcproj})")
+    message(STATUS "${_target_name}: providing ${_cmakelists_file} rebuilder (watching ${_vcproj})")
     if(NOT v2c_ruby) # avoid repeated checks (see cmake --trace)
       find_program(v2c_ruby NAMES ruby)
       if(NOT v2c_ruby)
@@ -51,25 +51,27 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
     list(APPEND v2c_mappings ${proj_mappings})
     #message("v2c_mappings ${v2c_mappings}")
     add_custom_command(OUTPUT "${stamp_file}"
-      COMMAND "${v2c_ruby}" "${_script}" "${_vcproj}" "${_cmakelists}" "${_master_proj_dir}"
+      COMMAND "${v2c_ruby}" "${_script}" "${_vcproj}" "${_cmakelists_file}" "${_master_proj_dir}"
       COMMAND "${CMAKE_COMMAND}" -E touch "${stamp_file}"
       # FIXME add any other relevant dependencies here
       DEPENDS "${_vcproj}" "${_script}" ${v2c_mappings} "${v2c_ruby}"
-      COMMENT "vcproj settings changed, rebuilding ${_cmakelists}"
+      COMMENT "vcproj settings changed, rebuilding ${_cmakelists_file}"
       VERBATIM
     )
-    # TODO: do we have to set_source_files_properties(GENERATED) on ${_cmakelists}?
+    # TODO: do we have to set_source_files_properties(GENERATED) on ${_cmakelists_file}?
 
     # NOTE: we use update_cmakelists_[TARGET] names instead of [TARGET]_...
     # since in certain IDEs these peripheral targets will end up as user-visible folders
     # and we want to keep them darn out of sight via suitable sorting!
     set(target_update_cmakelists update_cmakelists_${_target_name})
-    #add_custom_target(${target_update_cmakelists} DEPENDS ${_cmakelists} VERBATIM)
-    add_custom_target(${target_update_cmakelists} ALL VERBATIM DEPENDS "${stamp_file}" VERBATIM)
+    #add_custom_target(${target_update_cmakelists} DEPENDS "${_cmakelists_file}")
+    add_custom_target(${target_update_cmakelists} ALL DEPENDS "${stamp_file}")
 
     if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
       # make sure the rebuild happens _before_ trying to build the actual target.
       add_dependencies(${_target_name} ${target_update_cmakelists})
+    else(TARGET ${_target_name})
+      message(STATUS "INFO: hmm, no target available to setup CMakeLists.txt updater target ordering.")
     endif(TARGET ${_target_name})
     # and have an update_cmakelists_ALL target to be able to update all
     # outdated CMakeLists.txt files within a project hierarchy
@@ -91,13 +93,13 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_
 #  add_custom_target(update_cmakelists_abort_build ALL
 ##    COMMAND /bin/false
 #    COMMAND sdfgsdf
-#    DEPENDS "${_cmakelists}"
+#    DEPENDS "${_cmakelists_file}"
 #    VERBATIM
 #  )
 #
 #  add_dependencies(update_cmakelists_abort_build update_cmakelists)
   endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
-endfunction(v2c_rebuild_on_update _target_name _vcproj _cmakelists _script _master_proj_dir)
+endfunction(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _master_proj_dir)
 
 
 # This function will set up target properties gathered from
