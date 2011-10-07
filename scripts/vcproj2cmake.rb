@@ -1054,6 +1054,10 @@ File.open(tmpfile.path, "w") { |out|
           cmake_generate_vcproj2cmake_func_comment(out)
           puts_ind(out, "v2c_target_set_properties_vs_scc(#{target} \"#{scc_project_name}\" \"#{scc_local_path}\" \"#{scc_provider}\")")
         end
+        # TODO: might want to set a target's FOLDER property, too...
+        # (and perhaps a .vcproj has a corresponding attribute
+        # which indicates that?)
+
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # not target.nil?
 
