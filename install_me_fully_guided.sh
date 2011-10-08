@@ -16,10 +16,10 @@ script_path="$(dirname "$script_location")"
 echo "Welcome to the guided install of vcproj2cmake!"
 echo "Will now redirect to Ruby script..."
 
-ruby_bin="$(which ruby)"
+ruby_bin="`which ruby || :`"
 
-if [ -z "${ruby_bin}" ]; then
-  echo "ERROR: no Ruby binary found, please install a Ruby package!" 2>&1;
+if ! [ -x "${ruby_bin:-}" ]; then
+  echo "ERROR: no usable Ruby binary found - try installing a Ruby package!" 2>&1;
   exit 1
 fi
 
