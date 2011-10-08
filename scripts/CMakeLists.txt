@@ -6,7 +6,10 @@ set(v2c_script_converter "vcproj2cmake.rb")
 set(v2c_script_converter_recursive "vcproj2cmake_recursive.rb")
 set(v2c_script_converter_settings "vcproj2cmake_settings.rb")
 
-find_package(Ruby)
+# Specify QUIET since it will print an annoying message
+# in case of an executable-only Ruby install
+# (we _do_ need the Ruby executable only)
+find_package(Ruby QUIET)
 if(NOT RUBY_EXECUTABLE)
   message(FATAL_ERROR "vcproj2cmake .vcproj conversion script currently is Ruby-based, thus your system needs to have a Ruby package installed, aborting!")
 endif(NOT RUBY_EXECUTABLE)
