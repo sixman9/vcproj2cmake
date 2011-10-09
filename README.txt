@@ -22,7 +22,7 @@ Usage (very rough summary), with Linux/Makefile generator:
 - after successfully converting the .vcproj file to a CMakeLists.txt, start your out-of-tree CMake builds:
   - mkdir ../[PROJECT_NAME].build_toolkit1_v1.2.3_unicode_debug
   - cd ../[PROJECT_NAME].build_toolkit1_v1.2.3_unicode_debug
-  - cmake -DCMAKE_BUILD_TYPE=Debug ../[PROJECT_NAME] (alternatively: ccmake ../[PROJECT_NAME])
+  - cmake -DCMAKE_BUILD_TYPE=Debug ../[PROJECT_NAME] (alternatively: ccmake ../[PROJECT_NAME]) - NOTE that DCMAKE_BUILD_TYPE is a _required_ setting on many generators (things will break if unspecified)
   - time make -j3 -k
 
 ===========================================================================
