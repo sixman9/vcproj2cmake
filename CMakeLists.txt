@@ -37,6 +37,12 @@ if(v2c_vcproj_load_demo_app)
     v2c_svn_checkout("${demo_app_repo_url}" "${demo_app_name}" "${_demo_app_root_dir}")
   endfunction(v2c_fetch_demo_app_osdab _demo_app_root_dir)
 
+  function(v2c_fetch_demo_app_sebclient _demo_app_root_dir)
+    set(demo_app_name "SebWindowsClient")
+    set(demo_app_repo_url "https://seb.svn.sourceforge.net/svnroot/seb/trunk/win/SebWindowsPackage/SebWindowsClient")
+    v2c_svn_checkout("${demo_app_repo_url}" "${demo_app_name}" "${_demo_app_root_dir}")
+  endfunction(v2c_fetch_demo_app_sebclient _demo_app_root_dir)
+
   # obey TMPDIR env variable convention:
   set(tmpdir "$ENV{TMPDIR}")
   if(NOT IS_DIRECTORY "${tmpdir}")
@@ -48,6 +54,8 @@ if(v2c_vcproj_load_demo_app)
   endif(NOT IS_DIRECTORY "${tmpdir}")
   set(v2c_demo_app_root "${tmpdir}/vcproj2cmake_demo_app")
   v2c_fetch_demo_app_osdab("${v2c_demo_app_root}")
+  # Ouch, sebclient is _very_ large (139MB) - thus do not offer it as a publicly visible default.
+  #v2c_fetch_demo_app_sebclient("${v2c_demo_app_root}")
 
   set(v2c_vcproj_proj_source_root "${v2c_demo_app_root}" CACHE STRING "${v2c_vcproj_proj_source_root_doc}" FORCE)
   # Originally we had some broken mark_as_advanced() mechanism to hide
