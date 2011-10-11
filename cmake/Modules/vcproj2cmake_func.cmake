@@ -21,14 +21,14 @@ set(V2C_FUNC_DEFINED true)
 # FIXME: should obey V2C_LOCAL_CONFIG_DIR setting!!
 set(v2c_mappings_files "cmake/vcproj2cmake/*_mappings.txt")
 
-file(GLOB root_mappings "${CMAKE_SOURCE_DIR}/${v2c_mappings_files}")
+file(GLOB root_mappings_list "${CMAKE_SOURCE_DIR}/${v2c_mappings_files}")
 
 
 # Function to automagically rebuild our converted CMakeLists.txt
 # by the original converter script in case any relevant files changed.
-function(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _master_proj_dir)
-  if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
-    message(STATUS "${_target_name}: providing ${_cmakelists_file} rebuilder (watching ${_vcproj})")
+if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
+  function(v2c_rebuild_on_update _target_name _vcproj_file _cmakelists_file _script _master_proj_dir)
+    message(STATUS "${_target_name}: providing ${_cmakelists_file} rebuilder (watching ${_vcproj_file})")
     if(NOT v2c_ruby) # avoid repeated checks (see cmake --trace)
       find_program(v2c_ruby NAMES ruby)
       if(NOT v2c_ruby)
@@ -44,17 +44,17 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _ma
     # need an intermediate stamp file, otherwise "make clean" will clean
     # our live output file (CMakeLists.txt), yet we need to preserve it
     # since it hosts this very CMakeLists.txt rebuilder...
-    set(stamp_file "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder.stamp")
+    set(cmakelists_rebuilder_stamp_file "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder.stamp")
     # add dependencies for mappings files in both root project and current project
-    list(APPEND v2c_mappings ${root_mappings})
-    file(GLOB proj_mappings "${v2c_mappings_files}")
-    list(APPEND v2c_mappings ${proj_mappings})
-    #message("v2c_mappings ${v2c_mappings}")
-    add_custom_command(OUTPUT "${stamp_file}"
-      COMMAND "${v2c_ruby}" "${_script}" "${_vcproj}" "${_cmakelists_file}" "${_master_proj_dir}"
-      COMMAND "${CMAKE_COMMAND}" -E touch "${stamp_file}"
+    list(APPEND v2c_mappings_list ${root_mappings_list})
+    file(GLOB proj_mappings_list "${v2c_mappings_files}")
+    list(APPEND v2c_mappings_list ${proj_mappings_list})
+    #message("v2c_mappings_list ${v2c_mappings_list}")
+    add_custom_command(OUTPUT "${cmakelists_rebuilder_stamp_file}"
+      COMMAND "${v2c_ruby}" "${_script}" "${_vcproj_file}" "${_cmakelists_file}" "${_master_proj_dir}"
+      COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_rebuilder_stamp_file}"
       # FIXME add any other relevant dependencies here
-      DEPENDS "${_vcproj}" "${_script}" ${v2c_mappings} "${v2c_ruby}"
+      DEPENDS "${_vcproj_file}" "${_script}" ${v2c_mappings_list} "${v2c_ruby}"
       COMMENT "vcproj settings changed, rebuilding ${_cmakelists_file}"
       VERBATIM
     )
@@ -65,7 +65,7 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _ma
     # and we want to keep them darn out of sight via suitable sorting!
     set(target_update_cmakelists update_cmakelists_${_target_name})
     #add_custom_target(${target_update_cmakelists} DEPENDS "${_cmakelists_file}")
-    add_custom_target(${target_update_cmakelists} ALL DEPENDS "${stamp_file}")
+    add_custom_target(${target_update_cmakelists} ALL DEPENDS "${cmakelists_rebuilder_stamp_file}")
 
     if(TARGET ${_target_name}) # in some projects an actual target might not exist (i.e. we simply got passed the project name)
       # make sure the rebuild happens _before_ trying to build the actual target.
@@ -80,26 +80,30 @@ function(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _ma
     endif(NOT TARGET update_cmakelists_ALL)
     add_dependencies(update_cmakelists_ALL ${target_update_cmakelists})
 
-# FIXME!!: we should definitely achieve aborting build process directly
-# after a new CMakeLists.txt has been generated (we don't want to go
-# full steam ahead with _old_ CMakeLists.txt content),
-# however I don't quite know yet how to hook up those targets
-# to actually get it to work.
-# ok, well, in fact ideally processing should be aborted after _all_ sub projects
-# have been converted, but _before_ any of these progresses towards building.
-# Which is even harder to achieve, I guess... (set a marker variable
-# or marker file and check for it somewhere global at the end of it all,
-# then abort, that would be the idea)
-#  add_custom_target(update_cmakelists_abort_build ALL
-##    COMMAND /bin/false
-#    COMMAND sdfgsdf
-#    DEPENDS "${_cmakelists_file}"
-#    VERBATIM
-#  )
-#
-#  add_dependencies(update_cmakelists_abort_build update_cmakelists)
-  endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
-endfunction(v2c_rebuild_on_update _target_name _vcproj _cmakelists_file _script _master_proj_dir)
+  # FIXME!!: we should definitely achieve aborting build process directly
+  # after a new CMakeLists.txt has been generated (we don't want to go
+  # full steam ahead with _old_ CMakeLists.txt content),
+  # however I don't quite know yet how to hook up those targets
+  # to actually get it to work.
+  # ok, well, in fact ideally processing should be aborted after _all_ sub projects
+  # have been converted, but _before_ any of these progresses towards building.
+  # Which is even harder to achieve, I guess... (set a marker variable
+  # or marker file and check for it somewhere global at the end of it all,
+  # then abort, that would be the idea)
+  #  add_custom_target(update_cmakelists_abort_build ALL
+  ##    COMMAND /bin/false
+  #    COMMAND sdfgsdf
+  #    DEPENDS "${_cmakelists_file}"
+  #    VERBATIM
+  #  )
+  #
+  #  add_dependencies(update_cmakelists_abort_build update_cmakelists)
+  endfunction(v2c_rebuild_on_update _target_name _vcproj_file _cmakelists_file _script _master_proj_dir)
+else(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
+  function(v2c_rebuild_on_update _target_name _vcproj_file _cmakelists_file _script _master_proj_dir)
+    # dummy!
+  endfunction(v2c_rebuild_on_update _target_name _vcproj_file _cmakelists_file _script _master_proj_dir)
+endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 
 
 # This function will set up target properties gathered from
