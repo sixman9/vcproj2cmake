@@ -42,14 +42,18 @@
 #   write custom hook script content (which cannot be kept synchronized
 #   with changes _automatically_!!) each time due to changing components and libraries.
 
-require 'fileutils'
 require 'tempfile'
 require 'pathname'
 require 'rexml/document'
-include FileUtils::Verbose
+
+# http://devblog.vworkapp.com/post/910714976/best-practice-for-rubys-require
+
+$LOAD_PATH.unshift(File.dirname(__FILE__) + '/.') unless $LOAD_PATH.include?(File.dirname(__FILE__) + '/.')
+$LOAD_PATH.unshift(File.dirname(__FILE__) + '/./lib') unless $LOAD_PATH.include?(File.dirname(__FILE__) + '/./lib')
+
+require 'vcproj2cmake/util_file' # V2C_Util_File.cmp()
 
 # load common settings
-$LOAD_PATH.unshift(File.dirname(__FILE__))
 load 'vcproj2cmake_settings.rb'
 
 # Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]
@@ -1131,8 +1135,7 @@ configuration_changed = false
 have_old_file = false
 if File.exists?(output_file)
   have_old_file = true
-  # hmm, another possibility would be File.cmp() (ftools)
-  if not FileUtils.cmp(tmpfile.path, output_file)
+  if not V2C_Util_File.cmp(tmpfile.path, output_file)
     configuration_changed = true
   end
 else
@@ -1142,10 +1145,10 @@ end
 if configuration_changed
   if have_old_file
     # move away old file
-    mv(output_file, output_file + ".previous")
+    V2C_Util_File.mv(output_file, output_file + ".previous")
   end
   # activate our version
-  mv(tmpfile.path, output_file)
+  V2C_Util_File.mv(tmpfile.path, output_file)
 
   puts "Wrote #{output_file}"
   puts "Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH"

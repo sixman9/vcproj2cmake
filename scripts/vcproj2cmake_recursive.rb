@@ -1,11 +1,16 @@
 #!/usr/bin/env ruby
 
-require 'fileutils'
 require 'find'
 require 'pathname'
 
+$LOAD_PATH.unshift(File.dirname(__FILE__) + '/.') unless $LOAD_PATH.include?(File.dirname(__FILE__) + '/.')
+$LOAD_PATH.unshift(File.dirname(__FILE__) + '/./lib') unless $LOAD_PATH.include?(File.dirname(__FILE__) + '/./lib')
+
+#puts "LOAD_PATH: #{$LOAD_PATH.inspect}\n" # nice debugging
+
+require 'vcproj2cmake/util_file' # V2C_Util_File.mkdir_p()
+
 # load common settings
-$LOAD_PATH.unshift(File.dirname(__FILE__)) 
 load 'vcproj2cmake_settings.rb'
 
 script_fqpn = File.expand_path $0
