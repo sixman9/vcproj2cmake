@@ -14,9 +14,16 @@ set(V2C_LOCAL_CONFIG_DIR ./cmake/vcproj2cmake CACHE STRING "Relative path to vcp
 # in such case).
 option(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER "Automatically rebuild converted CMakeLists.txt files upon updates on .vcproj side?" ON)
 
+# In case automatic CMakeLists.txt rebuilds are enabled,
+# should we also have an additional mechanism to abort running builds
+# after re-conversion of any CMakeLists.txt files has been finished?
+if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
+  option(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD "Add a force-abort target to force abort of a build run in case any CMakeLists.txt files have been automatically rebuilt?" ON)
+endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 
 # Global Install Enable flag, to indicate whether one wants
-# to make use of pretty flexible vcproj2cmake-supplied install helper functions.
+# to make use of pretty flexible vcproj2cmake-supplied helper functions,
+# to provide installation functionality for .vcproj projects.
 # We don't enable it as default setting, since the user should first get a build
 # nicely running before having to worry about installation-related troubles...
 set(v2c_install_enable_default_setting false)
