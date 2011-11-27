@@ -35,3 +35,10 @@ $v2c_validate_vcproj_abort_on_error = 1
 # 3 == verbose
 # 4 == extra verbose
 $v2c_generated_comments_level = 2
+
+# The CMakeLists.txt files we create originate from a tempfile,
+# which always gets created with very restrictive access permissions (0600).
+# Since there's usually not much of a reason not to grant read access
+# of these build files to other people, we'll use a public 0644
+# as the default value.
+$v2c_cmakelists_create_permissions = 0644
