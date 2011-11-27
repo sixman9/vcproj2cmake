@@ -843,7 +843,7 @@ File.open(tmpfile.path, "w") { |out|
 
           if compiler.attributes["PreprocessorDefinitions"]
 
-            compiler.attributes["PreprocessorDefinitions"].split(";").sort.each { |s|
+            compiler.attributes["PreprocessorDefinitions"].split(/[;,]/).sort.each { |s|
               str_define, str_setting = s.strip.split(/=/)
               if str_setting.nil?
                     arr_defines.push(str_define)
