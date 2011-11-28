@@ -949,6 +949,10 @@ File.open(tmpfile.path, "w") { |out|
 
           map_lib_dirs = Hash.new()
           read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
+  	  if $v2c_generated_comments_level >= 3
+            puts_ind(out, "# It is said to be preferable to be able to use target_link_libraries()")
+            puts_ind(out, "# rather than the very unspecific link_directories().")
+	  end
           cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, nil)
 
           # FIXME: should use a macro like rosbuild_add_executable(),
