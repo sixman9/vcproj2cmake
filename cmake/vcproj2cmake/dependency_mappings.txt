@@ -8,8 +8,8 @@ gdiplus:WIN32|UNIX=${WIN32_LIBRARIES}
 glu32:=${OPENGL_glu_LIBRARY}
 htmlhelp:WIN32|UNIX=${WIN32_LIBRARIES}
 kernel32:WIN32|UNIX=${WIN32_LIBRARIES}
-mfcs80:WIN32|UNIX=${WIN32_LIBRARIES}
-mfcs80d:WIN32|UNIX=${WIN32_LIBRARIES}
+mfcs80:WIN32|UNIX=${MFC_LIBRARIES}
+mfcs80d:WIN32|UNIX=${MFC_LIBRARIES}
 mpr:WIN32|UNIX=${WIN32_LIBRARIES}
 msimg32:WIN32|UNIX=${WIN32_LIBRARIES}
 msvcrt:WIN32|UNIX=${WIN32_LIBRARIES}
@@ -20,6 +20,7 @@ odbccp32:WIN32|UNIX=${ODBC_LIBRARIES}
 ole32:WIN32|UNIX=${WIN32_LIBRARIES}
 oleaut32:WIN32|UNIX=${WIN32_LIBRARIES}
 opengl32:=${OPENGL_gl_LIBRARY}
+psapi:WIN32|UNIX=${WIN32_LIBRARIES}
 rpcrt4:WIN32|UNIX=${WIN32_LIBRARIES}
 setupapi:WIN32|UNIX=${WIN32_LIBRARIES}
 shell32:WIN32|UNIX=${WIN32_LIBRARIES}
@@ -29,6 +30,7 @@ version:WIN32|UNIX=${WIN32_LIBRARIES}
 wininet:WIN32|UNIX=${WIN32_LIBRARIES}
 winmm:WIN32|UNIX=${WIN32_LIBRARIES}
 winspool:WIN32|UNIX=${WIN32_LIBRARIES}
+wtsapi32:WIN32|UNIX=${WIN32_LIBRARIES}
 ###########################################################################
 # third-party libraries
 dynapdf:WIN32
@@ -37,21 +39,35 @@ dynapdf:WIN32
 # macro's ${xxx_LIBRARIES} string.
 cairo:=${Cairo_LIBRARIES}
 iconv:=${ICONV_LIBRARIES}
-libboost_filesystem-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
-libboost_filesystem-vc80-mt-1_34:=${Boost_LIBRARIES}
-libboost_regex-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
-libboost_regex-vc80-mt-1_34:=${Boost_LIBRARIES}
-libboost_signals-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
-libboost_signals-vc80-mt-1_34:=${Boost_LIBRARIES}
-libboost_system-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
-libboost_system-vc80-mt-1_34:=${Boost_LIBRARIES}
-libboost_thread-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
-libboost_thread-vc80-mt-1_34:=${Boost_LIBRARIES}
-libboost_wserialization-vc80-mt-gd-1_34:=${Boost_LIBRARIES}
-libboost_wserialization-vc80-mt-1_34:=${Boost_LIBRARIES}
+# For Boost libraries, we will list both Debug and Release naming variants,
+# but _both_ will forward to the non-_DEBUG, non-_RELEASE variable,
+# since it could cause problems otherwise (it's probably not always guaranteed
+# that a Debug build links to Debug-type Boost libraries, and vice versa)
+libboost_date_time-vc80-mt-gd-1_34:=${Boost_DATE_TIME_LIBRARY}
+libboost_date_time-vc80-mt-1_34:=${Boost_DATE_TIME_LIBRARY}
+# It seems that on Windows, filesystem implicitly fetches system dependency.
+libboost_filesystem-vc80-mt-gd-1_34:=${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY}
+libboost_filesystem-vc80-mt-1_34:=${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY}
+libboost_regex-vc80-mt-gd-1_34:=${Boost_REGEX_LIBRARY}
+libboost_regex-vc80-mt-1_34:=${Boost_REGEX_LIBRARY}
+libboost_serialization-vc80-mt-gd-1_34:=${Boost_SERIALIZATION_LIBRARY}
+libboost_serialization-vc80-mt-1_34:=${Boost_SERIALIZATION_LIBRARY}
+libboost_signals-vc80-mt-gd-1_34:=${Boost_SIGNALS_LIBRARY}
+libboost_signals-vc80-mt-1_34:=${Boost_SIGNALS_LIBRARY}
+libboost_system-vc80-mt-gd-1_34:=${Boost_SYSTEM_LIBRARY}
+libboost_system-vc80-mt-1_34:=${Boost_SYSTEM_LIBRARY}
+libboost_thread-vc80-mt-gd-1_34:=${Boost_THREAD_LIBRARY}
+libboost_thread-vc80-mt-1_34:=${Boost_THREAD_LIBRARY}
+libboost_unit_test_framework-vc80-mt-gd-1_34:=${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}
+libboost_unit_test_framework-vc80-mt-1_34:=${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}
+# It seems that on Windows, wserialization implicitly fetches serialization dependency.
+libboost_wserialization-vc80-mt-gd-1_34:=${Boost_WSERIALIZATION_LIBRARY} ${Boost_SERIALIZATION_LIBRARY}
+libboost_wserialization-vc80-mt-1_34:=${Boost_WSERIALIZATION_LIBRARY} ${Boost_SERIALIZATION_LIBRARY}
 libcurl:=${CURL_LIBRARIES}
 libpng:=${PNG_LIBRARIES}
 libxml2:=${LIBXML2_LIBRARIES}
+# WARNING: LTDL is LGPL (no static linking for proprietary apps!)
+ltdl:=${LTDL_LIBRARIES}
 zdll:=${ZLIB_LIBRARIES}
 ###########################################################################
 # Application-specific libraries
