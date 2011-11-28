@@ -24,6 +24,10 @@ require 'ftools'
 # http://wiki.ruby-portal.de/Modul
 
 module V2C_Util_File
+  def chmod(mode, *files)
+    return File.chmod(mode, *files)
+  end
+  module_function :chmod
   def cmp(a, b)
     return File.cmp(a, b)
   end

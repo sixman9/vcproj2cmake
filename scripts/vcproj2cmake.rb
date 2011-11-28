@@ -1149,7 +1149,7 @@ if configuration_changed
   end
   # activate our version
   # [for chmod() comments, see our $v2c_cmakelists_create_permissions settings variable]
-  File.chmod($v2c_cmakelists_create_permissions, tmpfile.path)
+  V2C_Util_File.chmod($v2c_cmakelists_create_permissions, tmpfile.path)
   V2C_Util_File.mv(tmpfile.path, output_file)
 
   puts "Wrote #{output_file}"
