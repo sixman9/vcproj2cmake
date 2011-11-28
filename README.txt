@@ -1,11 +1,11 @@
 vcproj2cmake.rb - .vcproj to CMakeLists.txt converter scripts
 written by Jesper Eskilson and Andreas Mohr.
-FIXME licensing (BSD)
+License: BSD (see LICENSE.txt)
 
 ----------
-DISCLAIMER: there are NO WARRANTIES as to the suitability of this converter,
-thus make sure to have suitable backup; if things break,
-then you certainly get to keep both parts.
+DISCLAIMER: there are NO WARRANTIES as to the suitability of this converter
+(for details see LICENSE.txt), thus make sure to have suitable backup -
+if things break, then you certainly get to keep both parts.
 ----------
 
 
