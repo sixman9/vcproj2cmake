@@ -380,6 +380,8 @@ def cmake_target_install(target, out)
   puts_ind(out, "v2c_target_install(#{target})")
 end
 
+$vc8_value_separator_regex = "[;,]"
+
 def vc8_parse_file(project, file, arr_sources)
   projname = project.attributes["Name"]
   f = normalize(file.attributes["RelativePath"])
@@ -831,7 +833,7 @@ File.open(tmpfile.path, "w") { |out|
           arr_includes = Array.new()
           map_includes = Hash.new()
           if compiler.attributes["AdditionalIncludeDirectories"]
-            include_dirs = compiler.attributes["AdditionalIncludeDirectories"].split(/[,;]/).sort.each { |s|
+            include_dirs = compiler.attributes["AdditionalIncludeDirectories"].split(/#{$vc8_value_separator_regex}/).sort.each { |s|
                 incpath = normalize(s).strip
                 #puts "include is '#{incpath}'"
                 arr_includes.push(incpath)
@@ -843,7 +845,7 @@ File.open(tmpfile.path, "w") { |out|
 
           if compiler.attributes["PreprocessorDefinitions"]
 
-            compiler.attributes["PreprocessorDefinitions"].split(/[;,]/).sort.each { |s|
+            compiler.attributes["PreprocessorDefinitions"].split(/#{$vc8_value_separator_regex}/).sort.each { |s|
               str_define, str_setting = s.strip.split(/=/)
               if str_setting.nil?
                     arr_defines.push(str_define)
@@ -930,7 +932,7 @@ File.open(tmpfile.path, "w") { |out|
 
             lib_dirs = linker.attributes["AdditionalLibraryDirectories"]
             if lib_dirs and lib_dirs.length > 0
-              lib_dirs.split(/[,;]/).each { |lib_dir|
+              lib_dirs.split(/#{$vc8_value_separator_regex}/).each { |lib_dir|
                 lib_dir = normalize(lib_dir).strip
 		  #puts "lib dir is '#{lib_dir}'"
                 arr_lib_dirs.push(lib_dir)
