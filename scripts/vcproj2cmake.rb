@@ -525,6 +525,90 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
   end
 end
 
+# See also "Macros for Build Commands and Properties"
+#   http://msdn.microsoft.com/en-us/library/c02as0cs%28v=vs.71%29.aspx
+def vc8_handle_config_variables(str, arr_config_var_handling)
+  # http://langref.org/all-languages/pattern-matching/searching/loop-through-a-string-matching-a-regex-and-performing-an-action-for-each-match
+  str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
+  str_scan_copy.scan(/\$\(([[:alnum:]_]+)\)/) {
+    config_var = $1
+    case config_var
+      when /ConfigurationName/
+        str.gsub!(/\$\(ConfigurationName\)/, "${CMAKE_CFG_INTDIR}")
+      when /PlatformName/
+        config_var_emulation_code = <<EOF
+  if(NOT v2c_VS_PlatformName)
+    if(CMAKE_CL_64)
+      set(v2c_VS_PlatformName "x64")
+    else(CMAKE_CL_64)
+      if(WIN32)
+        set(v2c_VS_PlatformName "Win32")
+      endif(WIN32)
+    endif(CMAKE_CL_64)
+  endif(NOT v2c_VS_PlatformName)
+EOF
+        arr_config_var_handling.push(config_var_emulation_code)
+        str.gsub!(/\$\(PlatformName\)/, "${v2c_VS_PlatformName}")
+        # InputName is said to be same as ProjectName in case input is the project.
+      when /InputName|ProjectName/
+        str.gsub!(/\$\(#{config_var}\)/, "${PROJECT_NAME}")
+        # See ProjectPath reasoning below.
+      when /InputFileName|ProjectFileName/
+        # str.gsub!(/\$\(InputFileName\)\$\(ProjectFileName\)/, "${PROJECT_NAME}.vcproj")
+        str.gsub!(/\$\(#{config_var}\)/, "${v2c_VS_#{config_var}}")
+      when /OutDir/
+        # FIXME: should extend code to do executable/library/... checks
+        # and assign CMAKE_LIBRARY_OUTPUT_DIRECTORY / CMAKE_RUNTIME_OUTPUT_DIRECTORY
+        # depending on this.
+        config_var_emulation_code = <<EOF
+  set(v2c_CS_OutDir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+EOF
+        str.gsub!(/\$\(OutDir\)/, "${v2c_VS_OutDir}")
+      when /ProjectDir/
+        str.gsub!(/\$\(ProjectDir\)/, "${PROJECT_SOURCE_DIR}")
+      when /ProjectPath/
+        # ProjectPath emulation probably doesn't make much sense,
+        # since it's a direct path to the MSVS-specific .vcproj file
+        # (redirecting to CMakeLists.txt file likely isn't correct/useful).
+        str.gsub!(/\$\(ProjectPath\)/, "${v2c_VS_ProjectPath}")
+      when /TargetPath/
+        config_var_emulation_code = ""
+        arr_config_var_handling.push(config_var_emulation_code)
+        str.gsub!(/\$\(TargetPath\)/, "${v2c_VS_TargetPath}")
+      else
+        # FIXME: for unknown variables, we need to provide CMake code which derives the
+	# value from the environment ($ENV{VAR}), since AFAIR these MSVS Config Variables will
+	# get defined via environment variable, via a certain ordering (project setting overrides
+	# env var, or some such).
+	# WARNING: note that _all_ existing variable references need to be sanitized into
+	# CMake-compatible syntax, otherwise they'll end up verbatim in generated build files,
+	# which may confuse build systems (make doesn't care, but Ninja goes haywire).
+        puts "Unknown/user-custom config variable name #{config_var} encountered in line '#{str}' --> TODO?"
+
+        #str.gsub!(/\$\(#{config_var}\)/, "${v2c_VS_#{config_var}}")
+	# For now, at least better directly reroute from environment variables:
+        str.gsub!(/\$\(#{config_var}\)/, "$ENV{#{config_var}}")
+      end
+  }
+  # FIXME!! We are completely missing string quoting handling
+  # in our current converter implementation.
+  # Once we added a variable in the string,
+  # we definitely _need_ to have the resulting full string quoted
+  # in the generated file, otherwise we won't obey
+  # CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
+  # However, there is a strong argument to be made for applying the quotes
+  # on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
+  # that such strings need quoting. IOW, we don't have to do it here on the _parser_ side.
+  # Generator pseudo code:
+  # if ((string_contains_dollar_sign) || (string_contains_whitespace))
+  #   string_has_variable_or_whitespace = 1
+  # if (string_has_variable_or_whitespace)
+  #   quote_it()
+
+  #puts "str is now #{str}"
+  return str
+end
+
 def cmake_write_file_list(project, files_str, parent_source_group, arr_sub_sources_for_parent, out)
   group = files_str[:name]
   if not files_str[:arr_sub_filters].nil?
@@ -652,6 +736,8 @@ File.open(tmpfile.path, "w") { |out|
 
   File.open(vcproj_filename) { |io|
     doc = REXML::Document.new io
+
+    arr_config_var_handling = Array.new()
 
     # try to point to cmake/Modules of the topmost directory of the vcproj2cmake conversion tree.
     # This also contains vcproj2cmake helper modules (these should - just like the CMakeLists.txt -
@@ -833,10 +919,11 @@ File.open(tmpfile.path, "w") { |out|
           arr_includes = Array.new()
           map_includes = Hash.new()
           if compiler.attributes["AdditionalIncludeDirectories"]
-            include_dirs = compiler.attributes["AdditionalIncludeDirectories"].split(/#{$vc8_value_separator_regex}/).sort.each { |s|
-                incpath = normalize(s).strip
-                #puts "include is '#{incpath}'"
-                arr_includes.push(incpath)
+            include_dirs = compiler.attributes["AdditionalIncludeDirectories"].split(/#{$vc8_value_separator_regex}/).sort.each { |inc_dir|
+                inc_dir = normalize(inc_dir).strip
+		inc_dir = vc8_handle_config_variables(inc_dir, arr_config_var_handling)
+                #puts "include is '#{inc_dir}'"
+                arr_includes.push(inc_dir)
             }
 	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc" into CMake ${MFC_INCLUDE} var
             read_mappings_combined(filename_map_inc, map_includes)
@@ -934,7 +1021,9 @@ File.open(tmpfile.path, "w") { |out|
             if lib_dirs and lib_dirs.length > 0
               lib_dirs.split(/#{$vc8_value_separator_regex}/).each { |lib_dir|
                 lib_dir = normalize(lib_dir).strip
-		  #puts "lib dir is '#{lib_dir}'"
+		  # FIXME: handle arr_config_var_handling appropriately.
+		lib_dir = vc8_handle_config_variables(lib_dir, arr_config_var_handling)
+		#puts "lib dir is '#{lib_dir}'"
                 arr_lib_dirs.push(lib_dir)
               }
             end
