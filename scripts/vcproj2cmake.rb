@@ -238,24 +238,24 @@ def read_mappings_combined(filename_mappings, mappings)
   read_mappings(filename_mappings, mappings)
 end
 
-def push_platform_def(platform_defs, platform, def_value)
-  #puts "adding #{def_value} on platform #{platform}"
+def push_platform_defn(platform_defs, platform, defn_value)
+  #puts "adding #{defn_value} on platform #{platform}"
   if platform_defs[platform].nil?
     platform_defs[platform] = Array.new
   end
-  platform_defs[platform].push(def_value)
+  platform_defs[platform].push(defn_value)
 end
 
 def parse_platform_conversions(platform_defs, arr_defs, map_defs)
-  arr_defs.each { |curr_value|
-    #puts map_defs[curr_value]
-    map_line = map_defs[curr_value]
+  arr_defs.each { |curr_defn|
+    #puts map_defs[curr_defn]
+    map_line = map_defs[curr_defn]
     if map_line.nil?
       # hmm, no direct match! Try to figure out whether any map entry
-      # is a regex which would match our curr_value
+      # is a regex which would match our curr_defn
       map_defs.each do |key, value|
-        if curr_value =~ /^#{key}$/
-          puts_debug "KEY: #{key} curr_value #{curr_value}"
+        if curr_defn =~ /^#{key}$/
+          puts_debug "KEY: #{key} curr_defn #{curr_defn}"
           map_line = value
           break
         end
@@ -263,22 +263,22 @@ def parse_platform_conversions(platform_defs, arr_defs, map_defs)
     end
     if map_line.nil?
       # no mapping? --> unconditionally use the original define
-      push_platform_def(platform_defs, "ALL", curr_value)
+      push_platform_defn(platform_defs, "ALL", curr_defn)
     else
       map_line.chomp.split(/\|/).each do |platform_element|
         #puts "platform_element #{platform_element}"
-        platform, replacement_def = platform_element.split(/=/)
+        platform, replacement_defn = platform_element.split(/=/)
         if platform.empty?
           # specified a replacement without a specific platform?
           # ("tag:=REPLACEMENT")
           # --> unconditionally use it!
           platform = "ALL"
         else
-          if replacement_def.nil?
-            replacement_def = curr_value
+          if replacement_defn.nil?
+            replacement_defn = curr_defn
           end
         end
-        push_platform_def(platform_defs, platform, replacement_def)
+        push_platform_defn(platform_defs, platform, replacement_defn)
       end
     end
   }
