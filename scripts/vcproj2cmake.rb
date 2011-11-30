@@ -290,7 +290,7 @@ def cmake_generate_vcproj2cmake_func_comment(chan)
   end
 end
 
-def cmake_write_build_attributes(cmake_command, element_prefix, out, arr_defs, map_defs, cmake_command_arg)
+def cmake_generate_build_attributes(cmake_command, element_prefix, out, arr_defs, map_defs, cmake_command_arg)
   # the container for the list of _actual_ dependencies as stated by the project
   all_platform_defs = Hash.new
   parse_platform_conversions(all_platform_defs, arr_defs, map_defs)
@@ -903,7 +903,7 @@ File.open(tmpfile.path, "w") { |out|
         # 1 == static MFC
         # 2 == shared MFC
 	# FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
-	# --> we probably should _not_ do case insensitive matching on
+	# --> we probably should _not_ switch to case insensitive matching on
 	# attributes (see e.g.
 	# http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
 	# but rather implement version-specific parser classes due to
@@ -927,19 +927,20 @@ File.open(tmpfile.path, "w") { |out|
         arr_flags = Array.new()
         config.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler|
 
-          arr_includes = Array.new()
-          map_includes = Hash.new()
           if compiler.attributes["AdditionalIncludeDirectories"]
+            arr_includes = Array.new()
+            map_includes = Hash.new()
             include_dirs = compiler.attributes["AdditionalIncludeDirectories"].split(/#{$vc8_value_separator_regex}/).sort.each { |inc_dir|
                 inc_dir = normalize(inc_dir).strip
 		inc_dir = vc8_handle_config_variables(inc_dir, arr_config_var_handling)
                 #puts "include is '#{inc_dir}'"
                 arr_includes.push(inc_dir)
             }
-	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc" into CMake ${MFC_INCLUDE} var
+	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc"
+	    # into CMake "SYSTEM ${MFC_INCLUDE}" information.
             read_mappings_combined(filename_map_inc, map_includes)
+            cmake_generate_build_attributes("include_directories", "", out, arr_includes, map_includes, nil)
           end
-          cmake_write_build_attributes("include_directories", "", out, arr_includes, map_includes, nil)
 
           if compiler.attributes["PreprocessorDefinitions"]
 
@@ -1053,7 +1054,7 @@ File.open(tmpfile.path, "w") { |out|
             puts_ind(out, "# It is said to be preferable to be able to use target_link_libraries()")
             puts_ind(out, "# rather than the very unspecific link_directories().")
 	  end
-          cmake_write_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, nil)
+          cmake_generate_build_attributes("link_directories", "", out, arr_lib_dirs, map_lib_dirs, nil)
 
           # FIXME: should use a macro like rosbuild_add_executable(),
           # http://www.ros.org/wiki/rosbuild/CMakeLists ,
@@ -1101,7 +1102,7 @@ File.open(tmpfile.path, "w") { |out|
 
             map_dependencies = Hash.new()
             read_mappings_combined(filename_map_dep, map_dependencies)
-            cmake_write_build_attributes("target_link_libraries", "", out, arr_dependencies, map_dependencies, project_name)
+            cmake_generate_build_attributes("target_link_libraries", "", out, arr_dependencies, map_dependencies, project_name)
           end # not target.nil?
         end # not arr_sub_sources.empty?
 
