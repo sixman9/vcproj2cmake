@@ -494,13 +494,13 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
     # yes, FIXME: on Win32, these files likely _should_ get listed
     # after all. We should probably do a platform check in such
     # cases, i.e. add support for a file_mappings.txt
-    scfiles = subfilter.attributes["SourceControlFiles"]
-    if not scfiles.nil? and scfiles.downcase == "false"
+    attr_scfiles = subfilter.attributes["SourceControlFiles"]
+    if not attr_scfiles.nil? and attr_scfiles.downcase == "false"
       puts "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
       next
     end
-    scname = subfilter.attributes["Name"]
-    if not scname.nil? and scname == "Generated Files"
+    attr_scname = subfilter.attributes["Name"]
+    if not attr_scname.nil? and attr_scname == "Generated Files"
       # Hmm, how are we supposed to handle Generated Files?
       # Most likely we _are_ supposed to add such files
       # and set_property(SOURCE ... GENERATED) on it.
@@ -927,14 +927,15 @@ File.open(tmpfile.path, "w") { |out|
         arr_flags = Array.new()
         config.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler|
 
-          if compiler.attributes["AdditionalIncludeDirectories"]
+          attr_incdir = compiler.attributes["AdditionalIncludeDirectories"]
+	  if not attr_incdir.nil?
             arr_includes = Array.new()
             map_includes = Hash.new()
-            include_dirs = compiler.attributes["AdditionalIncludeDirectories"].split(/#{$vc8_value_separator_regex}/).sort.each { |inc_dir|
-                inc_dir = normalize(inc_dir).strip
-		inc_dir = vc8_handle_config_variables(inc_dir, arr_config_var_handling)
-                #puts "include is '#{inc_dir}'"
-                arr_includes.push(inc_dir)
+            include_dirs = attr_incdir.split(/#{$vc8_value_separator_regex}/).sort.each { |elem_inc_dir|
+                elem_inc_dir = normalize(elem_inc_dir).strip
+		elem_inc_dir = vc8_handle_config_variables(elem_inc_dir, arr_config_var_handling)
+                #puts "include is '#{elem_inc_dir}'"
+                arr_includes.push(elem_inc_dir)
             }
 	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc"
 	    # into CMake "SYSTEM ${MFC_INCLUDE}" information.
@@ -942,53 +943,52 @@ File.open(tmpfile.path, "w") { |out|
             cmake_generate_build_attributes("include_directories", "", out, arr_includes, map_includes, nil)
           end
 
-          if compiler.attributes["PreprocessorDefinitions"]
-
-            compiler.attributes["PreprocessorDefinitions"].split(/#{$vc8_value_separator_regex}/).sort.each { |s|
-              str_define, str_setting = s.strip.split(/=/)
-              if str_setting.nil?
-                    arr_defines.push(str_define)
+          attr_defines = compiler.attributes["PreprocessorDefinitions"]
+	  if not attr_defines.nil?
+            attr_defines.split(/#{$vc8_value_separator_regex}/).sort.each { |elem_define|
+              str_define_key, str_define_value = elem_define.strip.split(/=/)
+              if str_define_value.nil?
+                    arr_defines.push(str_define_key)
               else
-                if str_setting =~ /[\(\)]+/
-                  escape_char(str_setting, '\\(')
-                  escape_char(str_setting, '\\)')
+                if str_define_value =~ /[\(\)]+/
+                  escape_char(str_define_value, '\\(')
+                  escape_char(str_define_value, '\\)')
                 end
-                arr_defines.push("#{str_define}=#{str_setting}")
+                arr_defines.push("#{str_define_key}=#{str_define_value}")
               end
             }
-
-          end
-
-          if compiler.attributes["AdditionalOptions"]
-            additionalOptions = compiler.attributes["AdditionalOptions"]
-	    # Oh well, we might eventually want to provide a full-scale
-	    # translation of various compiler switches to their
-	    # counterparts on compilers of various platforms, but for
-	    # now, let's simply directly pass them on to the compiler on the
-	    # Win32 side.
-            if not additionalOptions.nil?
-	      # Query WIN32 instead of MSVC, since AFAICS there's nothing in the
-	      # .vcproj to indicate tool specifics, thus these seem to
-	      # be settings for ANY PARTICULAR tool that is configured
-	      # on the Win32 side (.vcproj in general).
-              new_puts_ind(out, "if(WIN32)")
-	        $myindent += 2
-	        puts_ind(out, "set_property(DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{additionalOptions})")
-	        $myindent -= 2
-              puts_ind(out, "endif(WIN32)")
-            end
           end
 
           if config_use_of_mfc == 2
             arr_defines.push("_AFXEXT", "_AFXDLL")
           end
 
-	  # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
-	  # simply make reverse use of existing translation table in CMake source.
+          attr_opts = compiler.attributes["AdditionalOptions"]
+	  # Oh well, we might eventually want to provide a full-scale
+	  # translation of various compiler switches to their
+	  # counterparts on compilers of various platforms, but for
+	  # now, let's simply directly pass them on to the compiler on the
+	  # Win32 side.
+	  if not attr_opts.nil?
+	      # Query WIN32 instead of MSVC, since AFAICS there's nothing in the
+	      # .vcproj to indicate tool specifics, thus these seem to
+	      # be settings for ANY PARTICULAR tool that is configured
+	      # on the Win32 side (.vcproj in general).
+            new_puts_ind(out, "if(WIN32)")
+	        $myindent += 2
+	        puts_ind(out, "set_property(DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{attr_opts})")
+	        $myindent -= 2
+            puts_ind(out, "endif(WIN32)")
 
-	  if compiler.attributes["AdditionalOptions"]
-	    arr_flags = compiler.attributes["AdditionalOptions"].split(";")
-	  end
+	    # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
+	    # simply make reverse use of existing translation table in CMake source.
+	    # FIXME: Aww crap, that AdditionalOptions handling part here is actually a _duplicate_
+	    # of the part above, if not for the fact that it will end up as target- rather
+	    # than directory-related property. This needs to be resolved eventually,
+	    # but for now we'll just keep it like this until we have isolated parser/generator classes.
+	    # At least I now moved it into the same section which already handles the same thing above:
+	    arr_flags = attr_opts.split(";")
+          end
         }
 
         config_type = config.attributes["ConfigurationType"].to_i
@@ -1020,23 +1020,23 @@ File.open(tmpfile.path, "w") { |out|
           arr_dependencies = Array.new()
 	  arr_lib_dirs = Array.new()
           config.elements.each('Tool[@Name="VCLinkerTool"]') { |linker|
-            deps = linker.attributes["AdditionalDependencies"]
-            if deps and deps.length > 0
-              deps.split.each { |lib|
-                # FIXME possible to use lib = normalize(lib).strip here?
-                lib = lib.gsub(/\\/, '/')
-                arr_dependencies.push(File.basename(lib, ".lib"))
+            attr_deps = linker.attributes["AdditionalDependencies"]
+            if attr_deps and attr_deps.length > 0
+              attr_deps.split.each { |elem_lib_dep|
+                # FIXME possible to use elem_lib_dep = normalize(elem_lib_dep).strip here?
+                elem_lib_dep = elem_lib_dep.gsub(/\\/, '/')
+                arr_dependencies.push(File.basename(elem_lib_dep, ".lib"))
               }
             end
 
-            lib_dirs = linker.attributes["AdditionalLibraryDirectories"]
-            if lib_dirs and lib_dirs.length > 0
-              lib_dirs.split(/#{$vc8_value_separator_regex}/).each { |lib_dir|
-                lib_dir = normalize(lib_dir).strip
+            attr_lib_dirs = linker.attributes["AdditionalLibraryDirectories"]
+            if attr_lib_dirs and attr_lib_dirs.length > 0
+              attr_lib_dirs.split(/#{$vc8_value_separator_regex}/).each { |elem_lib_dir|
+                elem_lib_dir = normalize(elem_lib_dir).strip
 		  # FIXME: handle arr_config_var_handling appropriately.
-		lib_dir = vc8_handle_config_variables(lib_dir, arr_config_var_handling)
-		#puts "lib dir is '#{lib_dir}'"
-                arr_lib_dirs.push(lib_dir)
+		elem_lib_dir = vc8_handle_config_variables(elem_lib_dir, arr_config_var_handling)
+		#puts "lib dir is '#{elem_lib_dir}'"
+                arr_lib_dirs.push(elem_lib_dir)
               }
             end
 	    # TODO: support AdditionalOptions! (mention via
