@@ -525,16 +525,20 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
   end
 end
 
-# See also "Macros for Build Commands and Properties"
+# See also
+# "How to: Use Environment Variables in a Build"
+#   http://msdn.microsoft.com/en-us/library/ms171459.aspx
+# "Macros for Build Commands and Properties"
 #   http://msdn.microsoft.com/en-us/library/c02as0cs%28v=vs.71%29.aspx
 def vc8_handle_config_variables(str, arr_config_var_handling)
   # http://langref.org/all-languages/pattern-matching/searching/loop-through-a-string-matching-a-regex-and-performing-an-action-for-each-match
   str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
   str_scan_copy.scan(/\$\(([[:alnum:]_]+)\)/) {
     config_var = $1
+    config_var_replacement = ""
     case config_var
       when /ConfigurationName/
-        str.gsub!(/\$\(ConfigurationName\)/, "${CMAKE_CFG_INTDIR}")
+      	config_var_replacement = "${CMAKE_CFG_INTDIR}"
       when /PlatformName/
         config_var_emulation_code = <<EOF
   if(NOT v2c_VS_PlatformName)
@@ -548,14 +552,14 @@ def vc8_handle_config_variables(str, arr_config_var_handling)
   endif(NOT v2c_VS_PlatformName)
 EOF
         arr_config_var_handling.push(config_var_emulation_code)
-        str.gsub!(/\$\(PlatformName\)/, "${v2c_VS_PlatformName}")
+	config_var_replacement = "${v2c_VS_PlatformName}"
         # InputName is said to be same as ProjectName in case input is the project.
       when /InputName|ProjectName/
-        str.gsub!(/\$\(#{config_var}\)/, "${PROJECT_NAME}")
+      	config_var_replacement = "${PROJECT_NAME}"
         # See ProjectPath reasoning below.
       when /InputFileName|ProjectFileName/
-        # str.gsub!(/\$\(InputFileName\)\$\(ProjectFileName\)/, "${PROJECT_NAME}.vcproj")
-        str.gsub!(/\$\(#{config_var}\)/, "${v2c_VS_#{config_var}}")
+        # config_var_replacement = "${PROJECT_NAME}.vcproj"
+	config_var_replacement = "${v2c_VS_#{config_var}}"
       when /OutDir/
         # FIXME: should extend code to do executable/library/... checks
         # and assign CMAKE_LIBRARY_OUTPUT_DIRECTORY / CMAKE_RUNTIME_OUTPUT_DIRECTORY
@@ -563,18 +567,22 @@ EOF
         config_var_emulation_code = <<EOF
   set(v2c_CS_OutDir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 EOF
-        str.gsub!(/\$\(OutDir\)/, "${v2c_VS_OutDir}")
+	config_var_replacement = "${v2c_VS_OutDir}"
       when /ProjectDir/
-        str.gsub!(/\$\(ProjectDir\)/, "${PROJECT_SOURCE_DIR}")
+	config_var_replacement = "${PROJECT_SOURCE_DIR}"
       when /ProjectPath/
         # ProjectPath emulation probably doesn't make much sense,
         # since it's a direct path to the MSVS-specific .vcproj file
         # (redirecting to CMakeLists.txt file likely isn't correct/useful).
-        str.gsub!(/\$\(ProjectPath\)/, "${v2c_VS_ProjectPath}")
+	config_var_replacement = "${v2c_VS_ProjectPath}"
+      when /SolutionDir/
+        # Probability of SolutionDir being identical to CMAKE_SOURCE_DIR
+	# (i.e. the source root dir) ought to be strongly approaching 100%.
+	config_var_replacement = "${CMAKE_SOURCE_DIR}"
       when /TargetPath/
         config_var_emulation_code = ""
         arr_config_var_handling.push(config_var_emulation_code)
-        str.gsub!(/\$\(TargetPath\)/, "${v2c_VS_TargetPath}")
+	config_var_replacement = "${v2c_VS_TargetPath}"
       else
         # FIXME: for unknown variables, we need to provide CMake code which derives the
 	# value from the environment ($ENV{VAR}), since AFAIR these MSVS Config Variables will
@@ -587,7 +595,10 @@ EOF
 
         #str.gsub!(/\$\(#{config_var}\)/, "${v2c_VS_#{config_var}}")
 	# For now, at least better directly reroute from environment variables:
-        str.gsub!(/\$\(#{config_var}\)/, "$ENV{#{config_var}}")
+	config_var_replacement = "$ENV{#{config_var}}"
+      end
+      if config_var_replacement != ""
+        str.gsub!(/\$\(#{config_var}\)/, config_var_replacement)
       end
   }
   # FIXME!! We are completely missing string quoting handling
