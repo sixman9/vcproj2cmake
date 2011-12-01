@@ -290,6 +290,36 @@ def cmake_generate_vcproj2cmake_func_comment(chan)
   end
 end
 
+$cmake_var_match_regex = "\\$\\{[[:alnum:]_]+\\}"
+$cmake_env_var_match_regex = "\\$ENV\\{[[:alnum:]_]+\\}"
+
+# (un)quote strings as needed
+#
+# Once we added a variable in the string,
+# we definitely _need_ to have the resulting full string quoted
+# in the generated file, otherwise we won't obey
+# CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
+# However, there is a strong argument to be made for applying the quotes
+# on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
+# that such strings need quoting.
+def cmake_element_handle_quoting(elem)
+  # Determine whether quoting needed
+  # (in case of whitespace or variable content):
+  if elem.match(/\s|#{$cmake_var_match_regex}|#{$cmake_env_var_match_regex}/)
+    needs_quoting = 1
+  end
+  if elem.match(/".*"/)
+    has_quotes = 1
+  end
+  if needs_quoting and not has_quotes
+    return "\"#{elem}\""
+  end
+  if not needs_quoting and has_quotes
+    return elem.gsub(/"(.*)"/, '\1')
+  end
+  return elem
+end
+
 def cmake_generate_build_attributes(cmake_command, element_prefix, out, arr_defs, map_defs, cmake_command_arg)
   # the container for the list of _actual_ dependencies as stated by the project
   all_platform_defs = Hash.new
@@ -305,12 +335,12 @@ def cmake_generate_build_attributes(cmake_command, element_prefix, out, arr_defs
       $myindent += 2
     end
     if cmake_command_arg.nil?
-      puts_ind(out, "#{cmake_command}(")
-    else
-      puts_ind(out, "#{cmake_command}(#{cmake_command_arg}")
+      cmake_command_arg = ""
     end
+    puts_ind(out, "#{cmake_command}(#{cmake_command_arg}")
     arr_platdefs.each do |curr_value|
-      puts_ind(out, "  #{element_prefix}#{curr_value}")
+      curr_value_quot = cmake_element_handle_quoting(curr_value)
+      puts_ind(out, "  #{element_prefix}#{curr_value_quot}")
     end
     puts_ind(out, ")")
     if specific_platform
@@ -379,6 +409,9 @@ def cmake_target_install(target, out)
   cmake_generate_vcproj2cmake_func_comment(out)
   puts_ind(out, "v2c_target_install(#{target})")
 end
+
+$vc8_prop_var_scan_regex = "\\$\\(([[:alnum:]_]+)\\)"
+$vc8_prop_var_match_regex = "\\$\\([[:alnum:]_]+\\)"
 
 $vc8_value_separator_regex = "[;,]"
 
@@ -473,7 +506,7 @@ def cmake_separate_arguments(array_in)
   array_in.join(";")
 end
 
-def cmake_write_configuration_types(configuration_types, out)
+def cmake_generate_configuration_types(configuration_types, out)
     configuration_types_list = cmake_separate_arguments(configuration_types)
     puts_ind(out, "set(CMAKE_CONFIGURATION_TYPES \"#{configuration_types_list}\")" )
 end
@@ -533,7 +566,7 @@ end
 def vc8_handle_config_variables(str, arr_config_var_handling)
   # http://langref.org/all-languages/pattern-matching/searching/loop-through-a-string-matching-a-regex-and-performing-an-action-for-each-match
   str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
-  str_scan_copy.scan(/\$\(([[:alnum:]_]+)\)/) {
+  str_scan_copy.scan(/#{$vc8_prop_var_scan_regex}/) {
     config_var = $1
     # MSVS Property / Environment variables are documented to be case-insensitive,
     # thus implement insensitive match:
@@ -606,26 +639,12 @@ EOF
         str.gsub!(/\$\(#{config_var}\)/, config_var_replacement)
       end
   }
-  # FIXME!! We are completely missing string quoting handling
-  # in our current converter implementation.
-  # Once we added a variable in the string,
-  # we definitely _need_ to have the resulting full string quoted
-  # in the generated file, otherwise we won't obey
-  # CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
-  # However, there is a strong argument to be made for applying the quotes
-  # on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
-  # that such strings need quoting. IOW, we don't have to do it here on the _parser_ side.
-  # Generator pseudo code:
-  # if ((string_contains_dollar_sign) || (string_contains_whitespace))
-  #   string_has_variable_or_whitespace = 1
-  # if (string_has_variable_or_whitespace)
-  #   quote_it()
 
   #puts "str is now #{str}"
   return str
 end
 
-def cmake_write_file_list(project, files_str, parent_source_group, arr_sub_sources_for_parent, out)
+def cmake_generate_file_list(project, files_str, parent_source_group, arr_sub_sources_for_parent, out)
   group = files_str[:name]
   if not files_str[:arr_sub_filters].nil?
     arr_sub_filters = files_str[:arr_sub_filters]
@@ -652,7 +671,7 @@ def cmake_write_file_list(project, files_str, parent_source_group, arr_sub_sourc
     $myindent += 2
     arr_sub_filters.each { |subfilter|
       #puts "writing: #{subfilter}"
-      cmake_write_file_list(project, subfilter, this_source_group, arr_my_sub_sources, out)
+      cmake_generate_file_list(project, subfilter, this_source_group, arr_my_sub_sources, out)
     }
     $myindent -= 2
   end
@@ -665,14 +684,8 @@ def cmake_write_file_list(project, files_str, parent_source_group, arr_sub_sourc
     new_puts_ind(out, "set(#{source_files_variable}" )
     arr_local_sources.each { |source|
       #puts "quotes now: #{source}"
-      if source.include? ' '
-        # quote arguments with spaces (yes, I don't know how to
-        # preserve quotes properly other than to actually open-code it
-        # in such an ugly way - ARGH!!)
-        puts_ind(out, "  " + "\"#{source}\"")
-      else
-        puts_ind(out, "  " + "#{source}")
-      end
+      source_quot = cmake_element_handle_quoting(source)
+      puts_ind(out, "  #{source_quot}")
     }
     puts_ind(out, ")")
     # create source_group() of our local files
@@ -794,7 +807,7 @@ File.open(tmpfile.path, "w") { |out|
       # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
       ## configuration types need to be stated _before_ declaring the project()!
       #out.puts
-      #cmake_write_configuration_types(configuration_types, out)
+      #cmake_generate_configuration_types(configuration_types, out)
 
       # TODO: figure out language type (C CXX etc.) and add it to project() command
       new_puts_ind(out, "project(#{project_name})")
@@ -837,7 +850,7 @@ File.open(tmpfile.path, "w") { |out|
       	vc8_parse_file_list(project, files, main_files)
       }
       arr_sub_sources = Array.new()
-      cmake_write_file_list(project, main_files, nil, arr_sub_sources, out)
+      cmake_generate_file_list(project, main_files, nil, arr_sub_sources, out)
 
       if not arr_sub_sources.empty?
         # add a ${V2C_SOURCES} variable to the list, to be able to append
