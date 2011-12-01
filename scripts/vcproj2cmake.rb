@@ -535,11 +535,14 @@ def vc8_handle_config_variables(str, arr_config_var_handling)
   str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
   str_scan_copy.scan(/\$\(([[:alnum:]_]+)\)/) {
     config_var = $1
+    # MSVS Property / Environment variables are documented to be case-insensitive,
+    # thus implement insensitive match:
+    config_var_upcase = config_var.upcase
     config_var_replacement = ""
-    case config_var
-      when /ConfigurationName/
+    case config_var_upcase
+      when /CONFIGURATIONNAME/
       	config_var_replacement = "${CMAKE_CFG_INTDIR}"
-      when /PlatformName/
+      when /PLATFORMNAME/
         config_var_emulation_code = <<EOF
   if(NOT v2c_VS_PlatformName)
     if(CMAKE_CL_64)
@@ -554,13 +557,13 @@ EOF
         arr_config_var_handling.push(config_var_emulation_code)
 	config_var_replacement = "${v2c_VS_PlatformName}"
         # InputName is said to be same as ProjectName in case input is the project.
-      when /InputName|ProjectName/
+      when /INPUTNAME|PROJECTNAME/
       	config_var_replacement = "${PROJECT_NAME}"
         # See ProjectPath reasoning below.
-      when /InputFileName|ProjectFileName/
+      when /INPUTFILENAME|PROJECTFILENAME/
         # config_var_replacement = "${PROJECT_NAME}.vcproj"
 	config_var_replacement = "${v2c_VS_#{config_var}}"
-      when /OutDir/
+      when /OUTDIR/
         # FIXME: should extend code to do executable/library/... checks
         # and assign CMAKE_LIBRARY_OUTPUT_DIRECTORY / CMAKE_RUNTIME_OUTPUT_DIRECTORY
         # depending on this.
@@ -568,18 +571,18 @@ EOF
   set(v2c_CS_OutDir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 EOF
 	config_var_replacement = "${v2c_VS_OutDir}"
-      when /ProjectDir/
+      when /PROJECTDIR/
 	config_var_replacement = "${PROJECT_SOURCE_DIR}"
-      when /ProjectPath/
+      when /PROJECTPATH/
         # ProjectPath emulation probably doesn't make much sense,
         # since it's a direct path to the MSVS-specific .vcproj file
         # (redirecting to CMakeLists.txt file likely isn't correct/useful).
 	config_var_replacement = "${v2c_VS_ProjectPath}"
-      when /SolutionDir/
+      when /SOLUTIONDIR/
         # Probability of SolutionDir being identical to CMAKE_SOURCE_DIR
 	# (i.e. the source root dir) ought to be strongly approaching 100%.
 	config_var_replacement = "${CMAKE_SOURCE_DIR}"
-      when /TargetPath/
+      when /TARGETPATH/
         config_var_emulation_code = ""
         arr_config_var_handling.push(config_var_emulation_code)
 	config_var_replacement = "${v2c_VS_TargetPath}"
@@ -588,9 +591,11 @@ EOF
 	# value from the environment ($ENV{VAR}), since AFAIR these MSVS Config Variables will
 	# get defined via environment variable, via a certain ordering (project setting overrides
 	# env var, or some such).
-	# WARNING: note that _all_ existing variable references need to be sanitized into
+	# TODO: In fact we should probably provide support for a property_var_mappings.txt file -
+	# a variable that's relevant here would e.g. be QTDIR.
+	# WARNING: note that _all_ existing variable syntax elements needs to be sanitized into
 	# CMake-compatible syntax, otherwise they'll end up verbatim in generated build files,
-	# which may confuse build systems (make doesn't care, but Ninja goes haywire).
+	# which may confuse build systems (make doesn't care, but Ninja goes kerB00M).
         puts "Unknown/user-custom config variable name #{config_var} encountered in line '#{str}' --> TODO?"
 
         #str.gsub!(/\$\(#{config_var}\)/, "${v2c_VS_#{config_var}}")
