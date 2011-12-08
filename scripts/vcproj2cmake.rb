@@ -640,6 +640,7 @@ EOF
 	config_var_replacement = "$ENV{#{config_var}}"
       end
       if config_var_replacement != ""
+        puts "Replacing MSVS configuration variable $(#{config_var}) by #{config_var_replacement}."
         str.gsub!(/\$\(#{config_var}\)/, config_var_replacement)
       end
   }
