@@ -27,6 +27,13 @@ set(v2c_mappings_files "${v2c_global_config_subdir_my}/*_mappings.txt")
 file(GLOB root_mappings_list "${CMAKE_SOURCE_DIR}/${v2c_mappings_files}")
 
 
+# Sanitize CMAKE_BUILD_TYPE setting:
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Debug)
+  message("WARNING: CMAKE_BUILD_TYPE was not specified - defaulting to ${CMAKE_BUILD_TYPE} setting!")
+endif(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+
+
 if(NOT V2C_STAMP_FILES_SUBDIR)
   set(V2C_STAMP_FILES_SUBDIR "stamps")
 endif(NOT V2C_STAMP_FILES_SUBDIR)
