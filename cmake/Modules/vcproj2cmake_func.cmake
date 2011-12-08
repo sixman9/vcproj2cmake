@@ -371,3 +371,26 @@ function(v2c_target_install _target)
   message(STATUS "v2c_target_install: install(${v2c_install_params_list})")
   install(${v2c_install_params_list})
 endfunction(v2c_target_install _target)
+
+# The all-in-one helper method for post setup steps
+# (install handling, VS properties, CMakeLists.txt rebuilder, ...).
+# This function is expected to be _very_ volatile, with frequent signature and content changes
+# (--> vcproj2cmake.rb and vcproj2cmake_func.cmake versions should always be kept in sync)
+function(v2c_post_setup _target _project_label _vs_keyword _vcproj_file _cmake_current_list_file)
+  if(TARGET ${_target})
+    v2c_target_install(${_target})
+
+    # Make sure to keep CMake Name/Keyword (PROJECT_LABEL / VS_KEYWORD properties) in our converted file, too...
+    # Hrmm, both project() _and_ PROJECT_LABEL reference the same project_name?? WEIRD.
+    set_property(TARGET ${_target} PROPERTY PROJECT_LABEL "${_project_label}")
+    if(NOT _vs_keyword STREQUAL V2C_NOT_PROVIDED)
+      set_property(TARGET ${_target} PROPERTY VS_KEYWORD "${_vs_keyword}")
+    endif(NOT _vs_keyword STREQUAL V2C_NOT_PROVIDED)
+  endif(TARGET ${_target})
+  # Implementation note: the last argument to
+  # v2c_rebuild_on_update() should be as much of a 1:1 passthrough of
+  # the input argument to the CMakeLists.txt converter ruby script execution as possible/suitable,
+  # since invocation arguments of this script on rebuild should be (roughly) identical.
+  v2c_rebuild_on_update(${_target} "${_vcproj_file}" "${_cmake_current_list_file}" "${V2C_SCRIPT_LOCATION}" "${V2C_MASTER_PROJECT_DIR}")
+  include("${V2C_HOOK_POST}" OPTIONAL)
+endfunction(v2c_post_setup _target _project_label _vs_keyword _vcproj_file _cmake_current_list_file)

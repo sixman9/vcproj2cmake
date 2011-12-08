@@ -172,6 +172,7 @@ $debug = false
 
 ### definitely internal helpers ###
 $vcproj2cmake_func_cmake = "vcproj2cmake_func.cmake"
+$v2c_attribute_not_provided_marker = "V2C_NOT_PROVIDED"
 
 
 def puts_debug(str)
@@ -803,6 +804,11 @@ File.open(tmpfile.path, "w") { |out|
 
       project_name = project.attributes["Name"]
 
+      project_keyword = project.attributes["Keyword"]
+      if project_keyword.nil?
+	project_keyword = "#{$v2c_attribute_not_provided_marker}"
+      end
+
       $have_build_units = false
 
       configuration_types = Array.new()
@@ -1153,27 +1159,8 @@ File.open(tmpfile.path, "w") { |out|
         end
       } # [END per-config handling]
 
-      # Since installation handling is not influenced by config handling
-      # (right!?), it should be outside per-config section to prevent
-      # duplication.
-      if not target.nil?
-        cmake_target_install(target, out)
-      end
-
       # we can handle the following target stuff outside per-config handling (reason: see comment above)
       if not target.nil?
-        # Make sure to keep CMake Name/Keyword (PROJECT_LABEL / VS_KEYWORD properties) in our converted file, too...
-        # Hrmm, both project() _and_ PROJECT_LABEL reference the same project_name?? WEIRD.
-        out.puts
-        # no need to enclose this within "if(TARGET ...)" here since at this point
-        # we really _should_ have a target available,
-        # otherwise everything is broken anyway...
-        cmake_target_set_property(target, "PROJECT_LABEL", project_name, out)
-        project_keyword = project.attributes["Keyword"]
-        if not project_keyword.nil?
-          cmake_target_set_property(target, "VS_KEYWORD", project_keyword, out)
-        end
-
         # keep source control integration in our conversion!
         # FIXME: does it really work? Then reply to
         # http://www.itk.org/Bug/view.php?id=10237 !!
@@ -1237,16 +1224,17 @@ File.open(tmpfile.path, "w") { |out|
       puts_ind(out, "set(V2C_SCRIPT_LOCATION \"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\")")
       $myindent -= 2
       puts_ind(out, "endif(NOT V2C_SCRIPT_LOCATION)")
-      # Implementation note: the last argument to
-      # v2c_rebuild_on_update() should be as much of a 1:1 passthrough of
-      # the input argument to this ruby script execution as possible/suitable,
-      # since invocation arguments of this script on rebuild should be (roughly) identical.
+      # Rationale: keep count of generated lines of CMakeLists.txt to a bare minimum -
+      # call v2c_post_setup(), by simply passing all parameters that are _custom_ data
+      # of the current generated CMakeLists.txt file - all boilerplate handling functionality
+      # that's identical for each project should be implemented by the v2c_post_setup() function
+      # _internally_.
       cmake_generate_vcproj2cmake_func_comment(out)
-      puts_ind(out, "v2c_rebuild_on_update(#{project_name}")
+      puts_ind(out, "v2c_post_setup(#{project_name}")
+      puts_ind(out, "  \"#{project_name}\" \"#{project_keyword}\"")
       puts_ind(out, "  \"${CMAKE_CURRENT_SOURCE_DIR}/#{p_vcproj.basename}\"")
-      puts_ind(out, "  \"${CMAKE_CURRENT_LIST_FILE}\" \"${V2C_SCRIPT_LOCATION}\" \"${V2C_MASTER_PROJECT_DIR}\")")
+      puts_ind(out, "  \"${CMAKE_CURRENT_LIST_FILE}\")")
     }
-    new_puts_ind(out, "include(\"${V2C_HOOK_POST}\" OPTIONAL)")
   }
   # Close file, since Fileutils.mv on an open file will barf on XP
   out.close
