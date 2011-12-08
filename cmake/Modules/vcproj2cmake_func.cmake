@@ -48,8 +48,8 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 
     # Have an update_cmakelists_ALL convenience target
     # to be able to update _all_ outdated CMakeLists.txt files within a project hierarchy
-    # Providing _this_ particular target is needed even if the rebuild mechanism
-    # cannot be provided (missing script, etc.).
+    # Providing _this_ particular target (as a dummy) is needed
+    # even if the rebuild mechanism cannot be provided (missing script, etc.).
     if(NOT TARGET update_cmakelists_ALL)
       add_custom_target(update_cmakelists_ALL)
     endif(NOT TARGET update_cmakelists_ALL)
