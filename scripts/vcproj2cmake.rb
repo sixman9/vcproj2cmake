@@ -230,12 +230,16 @@ def read_mappings(filename_mappings, mappings)
   #puts mappings["mytest"]
 end
 
+# Read mappings of both current project and source root.
+# Ordering should definitely be _first_ current project,
+# _then_ global settings (a local project may have specific
+# settings which should _override_ the global defaults).
 def read_mappings_combined(filename_mappings, mappings)
+  read_mappings(filename_mappings, mappings)
   if $master_project_dir
-    # read common mappings to be used by all sub projects
+    # read common mappings (in source root) to be used by all sub projects
     read_mappings("#{$master_project_dir}/#{filename_mappings}", mappings)
   end
-  read_mappings(filename_mappings, mappings)
 end
 
 def push_platform_defn(platform_defs, platform, defn_value)
