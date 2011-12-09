@@ -168,14 +168,14 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
           # removing the output file). But apparently that does not help
           # either.
 #          DEPENDS "${rebuild_occurred_marker_file}"
-          COMMENT "Detected a rebuild of CMakeLists.txt files - forcefully aborting the current outdated build run (force new updated-settings configure run)!"
+          COMMENT ">>> === Detected a rebuild of CMakeLists.txt files - forcefully aborting the current outdated build run (force new updated-settings configure run)! <<< ==="
         )
         add_custom_target(update_cmakelists_abort_build_after_update DEPENDS "${cmakelists_update_check_stamp_file}")
 
         add_custom_command(OUTPUT "${update_cmakelists_abort_build_after_update_cleanup_stamp_file}"
           COMMAND "${CMAKE_COMMAND}" -E remove -f "${cmakelists_update_check_did_abort_public_marker_file}"
           COMMAND "${CMAKE_COMMAND}" -E touch "${update_cmakelists_abort_build_after_update_cleanup_stamp_file}"
-          COMMENT "removed public marker!"
+          COMMENT "removed public marker file (for newly converted CMakeLists.txt signalling)!"
         )
         # Mark this target as ALL since it's VERY important that it gets
         # executed ASAP.
