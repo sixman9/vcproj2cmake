@@ -141,9 +141,13 @@ filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
 $myindent = 0
 
+# global variable to indicate whether we want debug output or not
+$debug = false
+
 ### USER-CONFIGURABLE SECTION END ###
 
-p_master_proj = Pathname.new($master_project_dir)
+master_project_location = File.expand_path $master_project_dir
+p_master_proj = Pathname.new(master_project_location)
 
 p_vcproj = Pathname.new(vcproj_filename)
 # figure out a global project_dir variable from the .vcproj location
@@ -158,6 +162,7 @@ $project_dir = p_vcproj.dirname
 script_location = File.expand_path "#{script_name}"
 p_script = Pathname.new(script_location)
 script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
+#puts "p_script #{p_script} | p_master_proj #{p_master_proj} | script_location_relative_to_master #{script_location_relative_to_master}"
 
 # monster HACK: set a global variable, since we need to be able
 # to tell whether we're able to build a target
@@ -167,9 +172,6 @@ script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
 # complain with "Cannot determine link language for target "xxx"".
 $have_build_units = false
 
-
-# global variable to indicate whether we want debug output or not
-$debug = false
 
 ### definitely internal helpers ###
 $vcproj2cmake_func_cmake = "vcproj2cmake_func.cmake"
