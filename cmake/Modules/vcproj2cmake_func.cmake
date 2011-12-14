@@ -24,7 +24,7 @@ set(V2C_FUNC_DEFINED true)
 set(v2c_global_config_subdir_my "cmake/vcproj2cmake")
 set(v2c_mappings_files_expr "${v2c_global_config_subdir_my}/*_mappings.txt")
 
-file(GLOB root_mappings_list "${CMAKE_SOURCE_DIR}/${v2c_mappings_files_expr}")
+file(GLOB root_mappings_files_list "${CMAKE_SOURCE_DIR}/${v2c_mappings_files_expr}")
 
 
 # Sanitize CMAKE_BUILD_TYPE setting:
@@ -40,19 +40,51 @@ endif(NOT V2C_STAMP_FILES_SUBDIR)
 set(v2c_stamp_files_dir "${CMAKE_BINARY_DIR}/${v2c_global_config_subdir_my}/${V2C_STAMP_FILES_SUBDIR}")
 file(MAKE_DIRECTORY "${v2c_stamp_files_dir}")
 
-# Function to automagically rebuild our converted CMakeLists.txt
-# by the original converter script in case any relevant files changed.
+
 if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
+  # Some one-time setup steps:
+
+  # Have an update_cmakelists_ALL convenience target
+  # to be able to update _all_ outdated CMakeLists.txt files within a project hierarchy
+  # Providing _this_ particular target (as a dummy) is _always_ needed,
+  # even if the rebuild mechanism cannot be provided (missing script, etc.).
+  if(NOT TARGET update_cmakelists_ALL)
+    add_custom_target(update_cmakelists_ALL)
+  endif(NOT TARGET update_cmakelists_ALL)
+
+  if(NOT v2c_ruby_BIN) # avoid repeated checks (see cmake --trace)
+    find_program(v2c_ruby_BIN NAMES ruby)
+    if(NOT v2c_ruby_BIN)
+      message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
+      return()
+    endif(NOT v2c_ruby_BIN)
+  endif(NOT v2c_ruby_BIN)
+
+  set(v2c_cmakelists_update_check_stamp_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_check_done.stamp")
+
+  if(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD)
+    # See also
+    # "Re: Makefile: 'abort' command? / 'elseif' to go with ifeq/else/endif?
+    #   (Make newbie)" http://www.mail-archive.com/help-gnu-utils@gnu.org/msg00736.html
+    if(UNIX)
+      set(v2c_abort_BIN false)
+    else(UNIX)
+      set(v2c_abort_BIN v2c_invoked_non_existing_command_simply_to_force_build_abort)
+    endif(UNIX)
+    # Provide a marker file, to enable external build invokers
+    # to determine whether a (supposedly entire) build
+    # was aborted due to CMakeLists.txt conversion and thus they
+    # should immediately resume with a new build...
+    set(cmakelists_update_check_did_abort_public_marker_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_check_did_abort.marker")
+    # This is the stamp file for the subsequent "cleanup" target
+    # (oh yay, we even need to have the marker file removed on next build launch again).
+    set(v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_abort_cleanup_done.stamp")
+  endif(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD)
+
+  # Function to automagically rebuild our converted CMakeLists.txt
+  # by the original converter script in case any relevant files changed.
   function(v2c_rebuild_on_update _target_name _vcproj_file _cmakelists_file _script _master_proj_dir)
     message(STATUS "${_target_name}: providing ${_cmakelists_file} rebuilder (watching ${_vcproj_file})")
-
-    # Have an update_cmakelists_ALL convenience target
-    # to be able to update _all_ outdated CMakeLists.txt files within a project hierarchy
-    # Providing _this_ particular target (as a dummy) is _always_ needed,
-    # even if the rebuild mechanism cannot be provided (missing script, etc.).
-    if(NOT TARGET update_cmakelists_ALL)
-      add_custom_target(update_cmakelists_ALL)
-    endif(NOT TARGET update_cmakelists_ALL)
 
     if(NOT EXISTS "${_script}")
       # Perhaps someone manually copied over a set of foreign-machine-converted CMakeLists.txt files...
@@ -61,36 +93,26 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
       return()
     endif(NOT EXISTS "${_script}")
 
-    if(NOT v2c_ruby_BIN) # avoid repeated checks (see cmake --trace)
-      find_program(v2c_ruby_BIN NAMES ruby)
-      if(NOT v2c_ruby_BIN)
-        message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
-        return()
-      endif(NOT v2c_ruby_BIN)
-    endif(NOT v2c_ruby_BIN)
-
     # There are some uncertainties about how to locate the ruby script.
     # for now, let's just hardcode a "must have been converted from root project" requirement.
     ## canonicalize script, to be able to precisely launch it via a CMAKE_SOURCE_DIR root dir base
     #file(RELATIVE_PATH _script_rel "${CMAKE_SOURCE_DIR}" "${_script}")
     ##message(FATAL_ERROR "_script ${_script} _script_rel ${_script_rel}")
 
-    set(cmakelists_update_check_stamp_file_ "${v2c_stamp_files_dir}/v2c_cmakelists_update_check_done.stamp")
-
     # Need an intermediate stamp file, otherwise "make clean" will clean
     # our live output file (CMakeLists.txt), yet we crucially need to preserve it
     # since it hosts this very CMakeLists.txt rebuilder mechanism...
     set(cmakelists_update_this_proj_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder_done.stamp")
     # Collect dependencies for mappings files in both root project and current project
-    file(GLOB proj_mappings_list_ "${v2c_mappings_files_expr}")
-    set(v2c_combined_mappings_list_ ${root_mappings_list} ${proj_mappings_list_})
-    #message("v2c_combined_mappings_list_ ${v2c_combined_mappings_list_}")
+    file(GLOB proj_mappings_files_list_ "${v2c_mappings_files_expr}")
+    set(v2c_combined_mappings_files_list_ ${root_mappings_files_list} ${proj_mappings_files_list_})
+    #message("v2c_combined_mappings_files_list_ ${v2c_combined_mappings_files_list_}")
     add_custom_command(OUTPUT "${cmakelists_update_this_proj_updated_stamp_file_}"
       COMMAND "${v2c_ruby_BIN}" "${_script}" "${_vcproj_file}" "${_cmakelists_file}" "${_master_proj_dir}"
-      COMMAND "${CMAKE_COMMAND}" -E remove -f "${cmakelists_update_check_stamp_file_}"
+      COMMAND "${CMAKE_COMMAND}" -E remove -f "${v2c_cmakelists_update_check_stamp_file}"
       COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_this_proj_updated_stamp_file_}"
       # FIXME add any other relevant dependencies here
-      DEPENDS "${_vcproj_file}" "${_script}" ${v2c_combined_mappings_list_} "${v2c_ruby_BIN}"
+      DEPENDS "${_vcproj_file}" "${_script}" ${v2c_combined_mappings_files_list_} "${v2c_ruby_BIN}"
       COMMENT "vcproj settings changed, rebuilding ${_cmakelists_file}"
     )
     # TODO: do we have to set_source_files_properties(GENERATED) on ${_cmakelists_file}?
@@ -139,29 +161,15 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     # valuable seconds for each build of any single file within the
     # project.
 
+    # FIXME: should use that V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD conditional
+    # to establish (during one-time setup) a _dummy/non-dummy_ _function_ for rebuild abort handling.
     if(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD)
       if(need_init_main_targets_this_time_)
-        # See also
-        # "Re: Makefile: 'abort' command? / 'elseif' to go with ifeq/else/endif?
-        #   (Make newbie)" http://www.mail-archive.com/help-gnu-utils@gnu.org/msg00736.html
-        if(UNIX)
-          set(v2c_abort_BIN false)
-        else(UNIX)
-          set(v2c_abort_BIN v2c_invoked_non_existing_command_simply_to_force_build_abort)
-        endif(UNIX)
-        # Provide a marker file, to enable external build invokers
-        # to determine whether a (supposedly entire) build
-        # was aborted due to CMakeLists.txt conversion and thus they
-        # should immediately resume with a new build...
-        set(cmakelists_update_check_did_abort_public_marker_file_ "${v2c_stamp_files_dir}/v2c_cmakelists_update_check_did_abort.marker")
-        # This is the stamp file for the subsequent "cleanup" target
-        # (oh yay, we even need to have the marker file removed on next build launch again).
-        set(update_cmakelists_abort_build_after_update_cleanup_stamp_file_ "${v2c_stamp_files_dir}/v2c_cmakelists_update_abort_cleanup_done.stamp")
-        add_custom_command(OUTPUT "${cmakelists_update_check_stamp_file_}"
+        add_custom_command(OUTPUT "${v2c_cmakelists_update_check_stamp_file}"
           # Obviously we need to touch the output file (success indicator) _before_ aborting by invoking false.
           # Also, we need to touch the public marker file as well.
-          COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_check_stamp_file_}" "${cmakelists_update_check_did_abort_public_marker_file_}"
-          COMMAND "${CMAKE_COMMAND}" -E remove -f "${update_cmakelists_abort_build_after_update_cleanup_stamp_file_}"
+          COMMAND "${CMAKE_COMMAND}" -E touch "${v2c_cmakelists_update_check_stamp_file}" "${cmakelists_update_check_did_abort_public_marker_file}"
+          COMMAND "${CMAKE_COMMAND}" -E remove -f "${v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file}"
           COMMAND "${v2c_abort_BIN}"
           # Hrmm, I thought that we _need_ this dependency, otherwise at least on Ninja the
           # command will not get triggered _within_ the same build run (by the preceding target
@@ -170,17 +178,17 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 #          DEPENDS "${rebuild_occurred_marker_file}"
           COMMENT ">>> === Detected a rebuild of CMakeLists.txt files - forcefully aborting the current outdated build run (force new updated-settings configure run)! <<< ==="
         )
-        add_custom_target(update_cmakelists_abort_build_after_update DEPENDS "${cmakelists_update_check_stamp_file_}")
+        add_custom_target(update_cmakelists_abort_build_after_update DEPENDS "${v2c_cmakelists_update_check_stamp_file}")
 
-        add_custom_command(OUTPUT "${update_cmakelists_abort_build_after_update_cleanup_stamp_file_}"
-          COMMAND "${CMAKE_COMMAND}" -E remove -f "${cmakelists_update_check_did_abort_public_marker_file_}"
-          COMMAND "${CMAKE_COMMAND}" -E touch "${update_cmakelists_abort_build_after_update_cleanup_stamp_file_}"
+        add_custom_command(OUTPUT "${v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file}"
+          COMMAND "${CMAKE_COMMAND}" -E remove -f "${cmakelists_update_check_did_abort_public_marker_file}"
+          COMMAND "${CMAKE_COMMAND}" -E touch "${v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file}"
           COMMENT "removed public marker file (for newly converted CMakeLists.txt signalling)!"
         )
         # Mark this target as ALL since it's VERY important that it gets
         # executed ASAP.
         add_custom_target(update_cmakelists_abort_build_after_update_cleanup ALL
-          DEPENDS "${update_cmakelists_abort_build_after_update_cleanup_stamp_file_}")
+          DEPENDS "${v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file}")
 
         add_dependencies(update_cmakelists_ALL update_cmakelists_abort_build_after_update_cleanup)
         add_dependencies(update_cmakelists_abort_build_after_update_cleanup update_cmakelists_abort_build_after_update)
@@ -216,13 +224,14 @@ function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_lo
   #  "VS_SCC_PROVIDER ${_vs_scc_provider}"
   #)
   if(_vs_scc_projectname)
-    set_property(TARGET ${_target} PROPERTY VS_SCC_PROJECTNAME "${_vs_scc_projectname}")
+    list(APPEND target_properties_list_ VS_SCC_PROJECTNAME "${_vs_scc_projectname}")
     if(_vs_scc_localpath)
-      set_property(TARGET ${_target} PROPERTY VS_SCC_LOCALPATH "${_vs_scc_localpath}")
+      list(APPEND target_properties_list_ VS_SCC_LOCALPATH "${_vs_scc_localpath}")
     endif(_vs_scc_localpath)
     if(_vs_scc_provider)
-      set_property(TARGET ${_target} PROPERTY VS_SCC_PROVIDER "${_vs_scc_provider}")
+      list(APPEND target_properties_list_ VS_SCC_PROVIDER "${_vs_scc_provider}")
     endif(_vs_scc_provider)
+    set_target_properties(${_target} PROPERTIES ${target_properties_list_})
   endif(_vs_scc_projectname)
 endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider)
 
@@ -302,7 +311,7 @@ set(v2c_install_param_list EXPORT DESTINATION PERMISSIONS CONFIGURATIONS COMPONE
 # Within the generated CMakeLists.txt file, it is supposed to have a
 # simple invocation of this function, with default behaviour here to be as
 # simple/useful as possible.
-# At a minimum, you should start by enabling V2C_INSTALL_ENABLE and
+# USAGE: at a minimum, you should start by enabling V2C_INSTALL_ENABLE and
 # specifying a globally valid V2C_INSTALL_DESTINATION setting
 # (or V2C_INSTALL_DESTINATION_EXECUTABLE and V2C_INSTALL_DESTINATION_SHARED_LIBRARY)
 # at a more higher-level "configure all of my contained projects" place.
