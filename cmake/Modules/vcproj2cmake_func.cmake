@@ -336,9 +336,9 @@ function(v2c_target_install _target)
   # about incomplete/incorrect parameters, we actually need to conditionally
   # compile a list of parameters to actually feed into it.
   #
-  #set(v2c_install_params_list_ ) # no need to unset (function scope!)
+  #set(v2c_install_params_values_list_ ) # no need to unset (function scope!)
 
-  list(APPEND v2c_install_params_list_ TARGETS ${_target})
+  list(APPEND v2c_install_params_values_list_ TARGETS ${_target})
   foreach(v2c_install_param_ ${v2c_install_param_list})
 
     set(v2c_install_param_value_ )
@@ -368,7 +368,7 @@ function(v2c_target_install _target)
       endif(NOT v2c_install_param_value_)
     endif(V2C_INSTALL_${v2c_install_param_}_${_target})
     if(v2c_install_param_value_)
-      list(APPEND v2c_install_params_list_ ${v2c_install_param_} "${v2c_install_param_value_}")
+      list(APPEND v2c_install_params_values_list_ ${v2c_install_param_} "${v2c_install_param_value_}")
     else(v2c_install_param_value_)
       # v2c_install_param_value_ unset? bail out in case of mandatory parameters (DESTINATION)
       if(v2c_install_param_ STREQUAL DESTINATION)
@@ -377,8 +377,8 @@ function(v2c_target_install _target)
     endif(v2c_install_param_value_)
   endforeach(v2c_install_param_ ${v2c_install_param_list})
 
-  message(STATUS "v2c_target_install: install(${v2c_install_params_list_})")
-  install(${v2c_install_params_list_})
+  message(STATUS "v2c_target_install: install(${v2c_install_params_values_list_})")
+  install(${v2c_install_params_values_list_})
 endfunction(v2c_target_install _target)
 
 # The all-in-one helper method for post setup steps
