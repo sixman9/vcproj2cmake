@@ -640,8 +640,9 @@ EOF
 	# get defined via environment variable, via a certain ordering (project setting overrides
 	# env var, or some such).
 	# TODO: In fact we should probably provide support for a property_var_mappings.txt file -
-	# a variable that's relevant here would e.g. be QTDIR.
-	# WARNING: note that _all_ existing variable syntax elements needs to be sanitized into
+	# a variable that's relevant here would e.g. be QTDIR (an entry in that file should map
+	# it to QT_INCLUDE_DIR or some such, for ready perusal by a find_package(Qt4) done by a hook script).
+	# WARNING: note that _all_ existing variable syntax elements need to be sanitized into
 	# CMake-compatible syntax, otherwise they'll end up verbatim in generated build files,
 	# which may confuse build systems (make doesn't care, but Ninja goes kerB00M).
         puts "Unknown/user-custom config variable name #{config_var} encountered in line '#{str}' --> TODO?"
