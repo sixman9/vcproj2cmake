@@ -44,6 +44,8 @@ file(MAKE_DIRECTORY "${v2c_stamp_files_dir}")
 if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
   # Some one-time setup steps:
 
+  set(v2c_cmakelists_target_rebuild_all_name update_cmakelists_rebuild_recursive_ALL)
+
   # Have an update_cmakelists_ALL convenience target
   # to be able to update _all_ outdated CMakeLists.txt files within a project hierarchy
   # Providing _this_ particular target (as a dummy) is _always_ needed,
@@ -81,6 +83,28 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     set(v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_abort_cleanup_done.stamp")
   endif(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD)
 
+  function(v2c_cmakelists_rebuild_recursively _script)
+    if(TARGET ${v2c_cmakelists_target_rebuild_all_name})
+      return() # Nothing left to do...
+    endif(TARGET ${v2c_cmakelists_target_rebuild_all_name})
+    # Need to manually derive the name of the recursive script...
+    string(REGEX REPLACE "(.*)/vcproj2cmake.rb" "\\1/vcproj2cmake_recursive.rb" script_recursive_ "${_script}")
+    if(NOT EXISTS "${script_recursive_}")
+      return()
+    endif(NOT EXISTS "${script_recursive_}")
+    message(STATUS "Providing fully recursive CMakeLists.txt rebuilder target ${v2c_cmakelists_target_rebuild_all_name}, to forcibly enact a recursive .vcproj --> CMake reconversion of all source tree sub directories.")
+    set(cmakelists_update_recursively_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_recursive_converter_done.stamp")
+    add_custom_command(OUTPUT "${cmakelists_update_recursively_updated_stamp_file_}"
+      COMMAND "${v2c_ruby_BIN}" "${script_recursive_}"
+      # And we will _NOT_ touch the command output, since this target should eternally remain ready to be remade.
+      #COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_recursively_updated_stamp_file_}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      DEPENDS "${CMAKE_SOURCE_DIR}/${v2c_global_config_subdir_my}/project_exclude_list.txt"
+      COMMENT "Doing recursive .vcproj --> CMakeLists.txt conversion in all source root sub directories."
+    )
+    add_custom_target(${v2c_cmakelists_target_rebuild_all_name} DEPENDS "${cmakelists_update_recursively_updated_stamp_file_}")
+  endfunction(v2c_cmakelists_rebuild_recursively _script)
+
   # Function to automagically rebuild our converted CMakeLists.txt
   # by the original converter script in case any relevant files changed.
   function(v2c_rebuild_on_update _target_name _vcproj_file _cmakelists_file _script _master_proj_dir)
@@ -99,14 +123,18 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     #file(RELATIVE_PATH _script_rel "${CMAKE_SOURCE_DIR}" "${_script}")
     ##message(FATAL_ERROR "_script ${_script} _script_rel ${_script_rel}")
 
+    # Hrmm, this is a wee bit unclean: since we gather access to the script name
+    # only in case of an invocation of this function, we'll have to invoke the recursive-rebuild function here.
+    v2c_cmakelists_rebuild_recursively("${_script}")
+
     # Need an intermediate stamp file, otherwise "make clean" will clean
     # our live output file (CMakeLists.txt), yet we crucially need to preserve it
     # since it hosts this very CMakeLists.txt rebuilder mechanism...
-    set(cmakelists_update_this_proj_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder_done.stamp")
     # Collect dependencies for mappings files in both root project and current project
     file(GLOB proj_mappings_files_list_ "${v2c_mappings_files_expr}")
     set(v2c_combined_mappings_files_list_ ${root_mappings_files_list} ${proj_mappings_files_list_})
     #message("v2c_combined_mappings_files_list_ ${v2c_combined_mappings_files_list_}")
+    set(cmakelists_update_this_proj_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder_done.stamp")
     add_custom_command(OUTPUT "${cmakelists_update_this_proj_updated_stamp_file_}"
       COMMAND "${v2c_ruby_BIN}" "${_script}" "${_vcproj_file}" "${_cmakelists_file}" "${_master_proj_dir}"
       COMMAND "${CMAKE_COMMAND}" -E remove -f "${v2c_cmakelists_update_check_stamp_file}"
