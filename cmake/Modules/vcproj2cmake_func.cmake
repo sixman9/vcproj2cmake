@@ -138,20 +138,29 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     # only in case of an invocation of this function, we'll have to invoke the recursive-rebuild function here.
     v2c_cmakelists_rebuild_recursively("${_script}")
 
+    set(v2c_cmakelists_rebuilder_deps_list_ "${_vcproj_file}" "${_script}")
+    # Collect dependencies for mappings files in both root project and current project
+    file(GLOB proj_mappings_files_list_ "${v2c_mappings_files_expr}")
+    list(APPEND v2c_cmakelists_rebuilder_deps_list_ ${root_mappings_files_list} ${proj_mappings_files_list_})
+    #message("v2c_cmakelists_rebuilder_deps_list_ ${v2c_cmakelists_rebuilder_deps_list_}")
+
+    # Need to manually derive the name of the settings script...
+    string(REGEX REPLACE "(.*)/vcproj2cmake.rb" "\\1/vcproj2cmake_settings.rb" script_settings_ "${_script}")
+    if(EXISTS "${script_settings_}")
+      list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${script_settings_}")
+    endif(EXISTS "${script_settings_}")
+    list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${v2c_ruby_BIN}")
+    # TODO add any other relevant dependencies here
+
     # Need an intermediate stamp file, otherwise "make clean" will clean
     # our live output file (CMakeLists.txt), yet we crucially need to preserve it
     # since it hosts this very CMakeLists.txt rebuilder mechanism...
-    # Collect dependencies for mappings files in both root project and current project
-    file(GLOB proj_mappings_files_list_ "${v2c_mappings_files_expr}")
-    set(v2c_combined_mappings_files_list_ ${root_mappings_files_list} ${proj_mappings_files_list_})
-    #message("v2c_combined_mappings_files_list_ ${v2c_combined_mappings_files_list_}")
     set(cmakelists_update_this_proj_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder_done.stamp")
     add_custom_command(OUTPUT "${cmakelists_update_this_proj_updated_stamp_file_}"
       COMMAND "${v2c_ruby_BIN}" "${_script}" "${_vcproj_file}" "${_cmakelists_file}" "${_master_proj_dir}"
       COMMAND "${CMAKE_COMMAND}" -E remove -f "${v2c_cmakelists_update_check_stamp_file}"
       COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_this_proj_updated_stamp_file_}"
-      # FIXME add any other relevant dependencies here
-      DEPENDS "${_vcproj_file}" "${_script}" ${v2c_combined_mappings_files_list_} "${v2c_ruby_BIN}"
+      DEPENDS ${v2c_cmakelists_rebuilder_deps_list_}
       COMMENT "vcproj settings changed, rebuilding ${_cmakelists_file}"
     )
     # TODO: do we have to set_source_files_properties(GENERATED) on ${_cmakelists_file}?
