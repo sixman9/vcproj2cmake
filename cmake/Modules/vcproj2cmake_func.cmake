@@ -45,6 +45,7 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
   # Some one-time setup steps:
 
   set(v2c_cmakelists_target_rebuild_all_name update_cmakelists_rebuild_recursive_ALL)
+  set(v2c_project_exclude_list_file_location "${CMAKE_SOURCE_DIR}/${v2c_global_config_subdir_my}/project_exclude_list.txt")
 
   # Have an update_cmakelists_ALL convenience target
   # to be able to update _all_ outdated CMakeLists.txt files within a project hierarchy
@@ -94,15 +95,25 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     endif(NOT EXISTS "${script_recursive_}")
     message(STATUS "Providing fully recursive CMakeLists.txt rebuilder target ${v2c_cmakelists_target_rebuild_all_name}, to forcibly enact a recursive .vcproj --> CMake reconversion of all source tree sub directories.")
     set(cmakelists_update_recursively_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_recursive_converter_done.stamp")
-    add_custom_command(OUTPUT "${cmakelists_update_recursively_updated_stamp_file_}"
+    add_custom_target(${v2c_cmakelists_target_rebuild_all_name}
       COMMAND "${v2c_ruby_BIN}" "${script_recursive_}"
-      # And we will _NOT_ touch the command output, since this target should eternally remain ready to be remade.
-      #COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_recursively_updated_stamp_file_}"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-      DEPENDS "${CMAKE_SOURCE_DIR}/${v2c_global_config_subdir_my}/project_exclude_list.txt"
+      DEPENDS "${v2c_project_exclude_list_file_location}"
       COMMENT "Doing recursive .vcproj --> CMakeLists.txt conversion in all source root sub directories."
     )
-    add_custom_target(${v2c_cmakelists_target_rebuild_all_name} DEPENDS "${cmakelists_update_recursively_updated_stamp_file_}")
+    # TODO: I wanted to add an extra target as an observer of the excluded projects file,
+    # but this does not work properly yet -
+    # ${v2c_cmakelists_target_rebuild_all_name} should run unconditionally,
+    # yet the depending observer target is supposed to be an ALL target which only triggers rerun
+    # in case of that excluded projects file dependency being dirty -
+    # which does not work since the rebuilder target will then _always_ run on a "make all" build.
+    #set(cmakelists_update_recursively_updated_observer_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_recursive_converter_observer_done.stamp")
+    #add_custom_command(OUTPUT "${cmakelists_update_recursively_updated_observer_stamp_file_}"
+    #  COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_recursively_updated_observer_stamp_file_}"
+    #  DEPENDS "${v2c_project_exclude_list_file_location}"
+    #)
+    #add_custom_target(update_cmakelists_rebuild_recursive_ALL_observer ALL DEPENDS "${cmakelists_update_recursively_updated_observer_stamp_file_}")
+    #add_dependencies(update_cmakelists_rebuild_recursive_ALL_observer ${v2c_cmakelists_target_rebuild_all_name})
   endfunction(v2c_cmakelists_rebuild_recursively _script)
 
   # Function to automagically rebuild our converted CMakeLists.txt
