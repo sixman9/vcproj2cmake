@@ -184,6 +184,24 @@ def puts_debug(str)
   end
 end
 
+def puts_info(str)
+  # We choose to not log an INFO: prefix (reduce log spew).
+  puts str
+end
+
+def puts_warn(str)
+  puts "WARNING: #{str}"
+end
+
+def puts_error(str)
+  $stderr.puts "ERROR: #{str}"
+end
+
+def puts_fatal(str)
+  puts_error "#{str}. Aborting!"
+  exit 1
+end
+
 def puts_ind(chan, str)
   chan.print ' ' * $myindent
   chan.puts str
@@ -340,7 +358,7 @@ def cmake_generate_build_attributes(cmake_command, element_prefix, out, arr_defs
   all_platform_defs = Hash.new
   parse_platform_conversions(all_platform_defs, arr_defs, map_defs)
   all_platform_defs.each { |key, arr_platdefs|
-    #puts "arr_platdefs: #{arr_platdefs}"
+    #puts_info "arr_platdefs: #{arr_platdefs}"
     next if arr_platdefs.empty?
     arr_platdefs.uniq!
     out.puts
@@ -380,7 +398,7 @@ def cmake_target_set_property_compile_definitions(target, config_name, arr_defs,
   all_platform_defs = Hash.new
   parse_platform_conversions(all_platform_defs, arr_defs, map_defs)
   all_platform_defs.each { |key, arr_platdefs|
-    #puts "arr_platdefs: #{arr_platdefs}"
+    #puts_info "arr_platdefs: #{arr_platdefs}"
     next if arr_platdefs.empty?
     arr_platdefs.uniq!
     out.puts
@@ -466,7 +484,7 @@ def vc8_parse_file(project, file, arr_sources)
   # Verbosely ignore IDL generated files
   if f =~/_(i|p).c$/
     # see file_mappings.txt comment above
-    puts "#{projname}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
+    puts_info "#{projname}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
     included_in_build = false
     return # no complex handling, just return
   end
@@ -478,7 +496,7 @@ def vc8_parse_file(project, file, arr_sources)
     # rebuilds in case of foreign-library header file changes).
     # Not sure whether these were added by users or
     # it's actually some standard MSVS mechanism... FIXME
-    puts "#{projname}::#{f} registered as a \"source\" file!? Skipping!"
+    puts_info "#{projname}::#{f} registered as a \"source\" file!? Skipping!"
     included_in_build = false
     return # no complex handling, just return
   end
@@ -487,10 +505,9 @@ def vc8_parse_file(project, file, arr_sources)
     if $v2c_validate_vcproj_ensure_files_ok
       # TODO: perhaps we need to add a permissions check, too?
       if not File.exist?("#{$project_dir}/#{f}")
-        $stderr.puts "File #{f} as listed in project #{projname} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
+        puts_error "File #{f} as listed in project #{projname} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
         if $v2c_validate_vcproj_abort_on_error
-          $stderr.puts "Error occurred - will abort and NOT write a broken CMakeLists.txt. Please fix .vcproj content!"
-          exit 1
+          puts_fatal "Improper original file - will abort and NOT write a broken CMakeLists.txt. Please fix .vcproj content!"
         end
       end
     end
@@ -544,7 +561,7 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
     # cases, i.e. add support for a file_mappings.txt
     attr_scfiles = subfilter.attributes["SourceControlFiles"]
     if not attr_scfiles.nil? and attr_scfiles.downcase == "false"
-      puts "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
+      puts_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
       next
     end
     attr_scname = subfilter.attributes["Name"]
@@ -552,7 +569,7 @@ def vc8_parse_file_list(project, vcproj_filter, files_str)
       # Hmm, how are we supposed to handle Generated Files?
       # Most likely we _are_ supposed to add such files
       # and set_property(SOURCE ... GENERATED) on it.
-      puts "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
+      puts_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
       next
     end
     if files_str[:arr_sub_filters].nil?
@@ -645,19 +662,19 @@ EOF
 	# WARNING: note that _all_ existing variable syntax elements need to be sanitized into
 	# CMake-compatible syntax, otherwise they'll end up verbatim in generated build files,
 	# which may confuse build systems (make doesn't care, but Ninja goes kerB00M).
-        puts "Unknown/user-custom config variable name #{config_var} encountered in line '#{str}' --> TODO?"
+        puts_warn "Unknown/user-custom config variable name #{config_var} encountered in line '#{str}' --> TODO?"
 
         #str.gsub!(/\$\(#{config_var}\)/, "${v2c_VS_#{config_var}}")
 	# For now, at least better directly reroute from environment variables:
 	config_var_replacement = "$ENV{#{config_var}}"
       end
       if config_var_replacement != ""
-        puts "Replacing MSVS configuration variable $(#{config_var}) by #{config_var_replacement}."
+        puts_info "Replacing MSVS configuration variable $(#{config_var}) by #{config_var_replacement}."
         str.gsub!(/\$\(#{config_var}\)/, config_var_replacement)
       end
   }
 
-  #puts "str is now #{str}"
+  #puts_info "str is now #{str}"
   return str
 end
 
@@ -687,7 +704,7 @@ def cmake_generate_file_list(project, files_str, parent_source_group, arr_sub_so
   if not arr_sub_filters.nil?
     $myindent += 2
     arr_sub_filters.each { |subfilter|
-      #puts "writing: #{subfilter}"
+      #puts_info "writing: #{subfilter}"
       cmake_generate_file_list(project, subfilter, this_source_group, arr_my_sub_sources, out)
     }
     $myindent -= 2
@@ -700,7 +717,7 @@ def cmake_generate_file_list(project, files_str, parent_source_group, arr_sub_so
     source_files_variable = "SOURCES_files_#{group_tag}"
     new_puts_ind(out, "set(#{source_files_variable}" )
     arr_local_sources.each { |source|
-      #puts "quotes now: #{source}"
+      #puts_info "quotes now: #{source}"
       source_quot = cmake_element_handle_quoting(source)
       puts_ind(out, "  #{source_quot}")
     }
@@ -896,7 +913,7 @@ endif(COMMAND cmake_policy)
         # hook includes, _right before_ creating the target with its sources.
         arr_sub_sources.push("V2C_SOURCES")
       else
-        puts "WARNING: #{project_name}: no source files at all!? (header-based project?)"
+        puts_warn "#{project_name}: no source files at all!? (header-based project?)"
       end
 
       # AFAIK .vcproj implicitly adds the project root to standard include path
@@ -990,7 +1007,7 @@ endif(COMMAND cmake_policy)
             include_dirs = attr_incdir.split(/#{$vc8_value_separator_regex}/).sort.each { |elem_inc_dir|
                 elem_inc_dir = normalize(elem_inc_dir).strip
 		elem_inc_dir = vc8_handle_config_variables(elem_inc_dir, arr_config_var_handling)
-                #puts "include is '#{elem_inc_dir}'"
+                #puts_info "include is '#{elem_inc_dir}'"
                 arr_includes.push(elem_inc_dir)
             }
 	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc"
@@ -1091,7 +1108,7 @@ endif(COMMAND cmake_policy)
                 elem_lib_dir = normalize(elem_lib_dir).strip
 		  # FIXME: handle arr_config_var_handling appropriately.
 		elem_lib_dir = vc8_handle_config_variables(elem_lib_dir, arr_config_var_handling)
-		#puts "lib dir is '#{elem_lib_dir}'"
+		#puts_info "lib dir is '#{elem_lib_dir}'"
                 arr_lib_dirs.push(elem_lib_dir)
               }
             end
@@ -1145,11 +1162,9 @@ endif(COMMAND cmake_policy)
             new_puts_ind(out, "add_library( #{target} STATIC ${SOURCES} )")
           elsif config_type == 10    # typeGeneric (Makefile) [and possibly other things...]
             # TODO: we _should_ somehow support these project types...
-            $stderr.puts "Project type #{config_type} not supported."
-            exit 1
+            puts_fatal "Project type #{config_type} not supported."
           elsif config_type == 0    # typeUnknown (utility)
-            $stderr.puts "Project type #{config_type} not supported."
-            exit 1
+            puts_fatal "Project type #{config_type} not supported."
           end
 
 	  # write target_link_libraries() in case there's a target
@@ -1297,12 +1312,12 @@ if configuration_changed
   V2C_Util_File.chmod($v2c_cmakelists_create_permissions, tmpfile.path)
   V2C_Util_File.mv(tmpfile.path, output_file)
 
-  puts %{\
+  puts_info %{\
 Wrote #{output_file}
 Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH
 }
 else
-  puts "No settings changed, #{output_file} not updated."
+  puts_info "No settings changed, #{output_file} not updated."
   # tmpfile will auto-delete when finalized...
 
   # Some make dependency mechanisms might require touching (timestamping) the unchanged(!) file
