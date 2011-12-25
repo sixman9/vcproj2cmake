@@ -1,3 +1,7 @@
+# NOTE: this CMakeLists.txt file is NOT a "sample" file -
+# its purpose is to install the actual collection of sample files
+# located within this directory.
+
 if(NOT v2c_samples_install_dir)
   message(FATAL_ERROR "no installation sub directory for vcproj2cmake tools given!")
 endif(NOT v2c_samples_install_dir)
