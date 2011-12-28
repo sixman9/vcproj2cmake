@@ -437,14 +437,6 @@ def cmake_target_set_property_compile_flags(target, config_name, arr_flags, out)
   puts_ind(out, "endif(MSVC)")
 end
 
-# Installs a target, by calling a very flexible and configurable helper
-# function implemented in vcproj2cmake_func.cmake.
-def cmake_target_install(target, out)
-  out.puts
-  cmake_generate_vcproj2cmake_func_comment(out)
-  puts_ind(out, "v2c_target_install(#{target})")
-end
-
 $vc8_prop_var_scan_regex = "\\$\\(([[:alnum:]_]+)\\)"
 $vc8_prop_var_match_regex = "\\$\\([[:alnum:]_]+\\)"
 
