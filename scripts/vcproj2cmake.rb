@@ -56,7 +56,7 @@ require 'vcproj2cmake/util_file' # V2C_Util_File.cmp()
 # load common settings
 load 'vcproj2cmake_settings.rb'
 
-# Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]
+# Usage: vcproj2cmake.rb <input.vc[x]proj> [<output CMakeLists.txt>] [<master project directory>]
 
 #*******************************************************************************************************
 # Check for command-line input errors
@@ -68,7 +68,6 @@ script_name = $0
 if ARGV.length < 1
    cl_error = "*** Too few arguments\n"
 else
-
    vcproj_filename = ARGV.shift
    #puts "First arg is #{vcproj_filename}"
 
@@ -658,8 +657,9 @@ module V2C_CMakeTargetGenerator_Funcs
       arr_local_sources = files_str[:arr_files].clone
     end
   
-    # TODO: cmake is said to have a weird bug in case of parent_source_group being "Source Files"
-    # http://www.mail-archive.com/cmake@cmake.org/msg05002.html
+    # TODO: cmake is said to have a weird bug in case of parent_source_group being "Source Files":
+    # "Re: [CMake] SOURCE_GROUP does not function in Visual Studio 8"
+    #   http://www.mail-archive.com/cmake@cmake.org/msg05002.html
     if parent_source_group.nil?
       this_source_group = ""
     else
@@ -719,8 +719,8 @@ module V2C_CMakeTargetGenerator_Funcs
   def put_sources(arr_sub_sources)
     new_puts_ind(@out, "set(SOURCES")
     $myindent += 2
-    arr_sub_sources.each { |group_tag|
-      puts_ind(@out, "${#{group_tag}}")
+    arr_sub_sources.each { |source_item|
+      puts_ind(@out, "${#{source_item}}")
     }
     $myindent -= 2
     puts_ind(@out, ")")
@@ -941,6 +941,8 @@ def vc8_parse_file_list(project_name, vcproj_filter, files_str)
       puts_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
       next
     end
+    # TODO: fetch filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
+    # attr_filter_regex = subfilter.attributes["Filter"]
     if files_str[:arr_sub_filters].nil?
       files_str[:arr_sub_filters] = Array.new()
     end
