@@ -1336,9 +1336,10 @@ File.open(tmpfile.path, "w") { |out|
             target_name = project_name
             #puts_ind(out, "add_library_vcproj2cmake( #{project_name} STATIC ${SOURCES} )")
             new_puts_ind(out, "add_library( #{target_name} STATIC ${SOURCES} )")
+          when 0    # typeUnknown (utility)
+            puts_warn "Project type 0 (typeUnknown - utility) is a _custom command_ type and thus probably cannot be supported easily. We will not abort and thus do write out a file, but it probably needs fixup (hook scripts?) to work properly. If this project type happens to use VCNMakeTool tool, then I would suggest to examine BuildCommandLine/ReBuildCommandLine/CleanCommandLine attributes for clues on how to proceed."
 	  else
           #when 10    # typeGeneric (Makefile) [and possibly other things...]
-          #when 0    # typeUnknown (utility)
             # TODO: we _should_ somehow support these project types...
             puts_fatal "Project type #{config_info.type} not supported."
           end
