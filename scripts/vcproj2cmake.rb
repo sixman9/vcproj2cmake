@@ -133,10 +133,9 @@ end
 # these settings taken from.
 config_multi_authoritative = ""
 
-filename_map_inc = "#{$v2c_config_dir_local}/include_mappings.txt"
-filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
-filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
-filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
+$filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
+$filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
+$filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
 $myindent = 0
 
@@ -400,6 +399,24 @@ class V2C_Config_Info
   attr_accessor :type
   attr_accessor :use_of_mfc
   attr_accessor :use_of_atl
+end
+
+class V2C_BaseVCProjGlobalParser
+  def initialize
+    @filename_map_inc = "#{$v2c_config_dir_local}/include_mappings.txt"
+    @map_includes = Hash.new()
+    read_mappings_includes()
+  end
+
+  attr_accessor :map_includes
+
+  private
+
+  def read_mappings_includes
+    # These mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc"
+    # into CMake "SYSTEM ${MFC_INCLUDE}" information.
+    read_mappings_combined(@filename_map_inc, @map_includes)
+  end
 end
 
 class V2C_BaseGlobalGenerator
@@ -1063,6 +1080,8 @@ File.open(tmpfile.path, "w") { |out|
   $global_generator_func.put_file_header()
 
   File.open(vcproj_filename) { |io|
+    parser_base = V2C_BaseVCProjGlobalParser.new
+
     doc = REXML::Document.new io
 
     arr_config_var_handling = Array.new()
@@ -1192,17 +1211,13 @@ File.open(tmpfile.path, "w") { |out|
           attr_incdir = compiler_xml.attributes["AdditionalIncludeDirectories"]
 	  if not attr_incdir.nil?
             arr_includes = Array.new()
-            map_includes = Hash.new()
             include_dirs = attr_incdir.split(/#{$vc8_value_separator_regex}/).sort.each { |elem_inc_dir|
                 elem_inc_dir = normalize_path(elem_inc_dir).strip
 		elem_inc_dir = vc8_handle_config_variables(elem_inc_dir, arr_config_var_handling)
                 #puts_info "include is '#{elem_inc_dir}'"
                 arr_includes.push(elem_inc_dir)
             }
-	    # these mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc"
-	    # into CMake "SYSTEM ${MFC_INCLUDE}" information.
-            read_mappings_combined(filename_map_inc, map_includes)
-            cmake_generate_build_attributes("include_directories", "", out, arr_includes, map_includes, nil)
+            cmake_generate_build_attributes("include_directories", "", out, arr_includes, parser_base.map_includes, nil)
           end
 
           attr_defines = compiler_xml.attributes["PreprocessorDefinitions"]
@@ -1298,7 +1313,7 @@ File.open(tmpfile.path, "w") { |out|
           arr_lib_dirs.push("${V2C_LIB_DIRS}")
 
           map_lib_dirs = Hash.new()
-          read_mappings_combined(filename_map_lib_dirs, map_lib_dirs)
+          read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
   	  if $v2c_generated_comments_level >= 3
             puts_ind(out, "# It is said to be preferable to be able to use target_link_libraries()")
             puts_ind(out, "# rather than the very unspecific link_directories().")
@@ -1351,7 +1366,7 @@ File.open(tmpfile.path, "w") { |out|
             arr_dependencies.push("${V2C_LIBS}")
 
             map_dependencies = Hash.new()
-            read_mappings_combined(filename_map_dep, map_dependencies)
+            read_mappings_combined($filename_map_dep, map_dependencies)
             cmake_generate_build_attributes("target_link_libraries", "", out, arr_dependencies, map_dependencies, project_name)
           end # not target_name.nil?
         end # not arr_sub_sources.empty?
@@ -1366,7 +1381,7 @@ File.open(tmpfile.path, "w") { |out|
         # configuration-_specific_ settings only!
         if not target_name.nil?
           map_defines = Hash.new()
-          read_mappings_combined(filename_map_def, map_defines)
+          read_mappings_combined($filename_map_def, map_defines)
           puts_ind(out, "if(TARGET #{target_name})")
           $myindent += 2
           $target_generator_func.set_property_compile_definitions(target_name, config_name, arr_defines, map_defines)
