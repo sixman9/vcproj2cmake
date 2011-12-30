@@ -885,7 +885,7 @@ def vc8_parse_file(project_name, file_xml, arr_sources)
       # TODO: perhaps we need to add a permissions check, too?
       if not File.exist?("#{$project_dir}/#{f}")
         puts_error "File #{f} as listed in project #{project_name} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
-        if $v2c_validate_vcproj_abort_on_error
+        if $v2c_validate_vcproj_abort_on_error > 0
           puts_fatal "Improper original file - will abort and NOT write a broken CMakeLists.txt. Please fix .vcproj content!"
         end
       end
