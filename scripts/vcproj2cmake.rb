@@ -404,7 +404,7 @@ end
 class V2C_BaseVCProjGlobalParser
   def initialize
     @filename_map_inc = "#{$v2c_config_dir_local}/include_mappings.txt"
-    @map_includes = Hash.new()
+    @map_includes = Hash.new
     read_mappings_includes()
   end
 
@@ -757,7 +757,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     end
   
     # process sub-filters, have their main source variable added to arr_my_sub_sources
-    arr_my_sub_sources = Array.new()
+    arr_my_sub_sources = Array.new
     if not arr_sub_filters.nil?
       $myindent += 2
       arr_sub_filters.each { |subfilter|
@@ -1041,14 +1041,14 @@ def vc8_parse_file_list(project_name, vcproj_filter, files_str)
     # TODO: fetch filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
     # attr_filter_regex = subfilter.attributes["Filter"]
     if files_str[:arr_sub_filters].nil?
-      files_str[:arr_sub_filters] = Array.new()
+      files_str[:arr_sub_filters] = Array.new
     end
-    subfiles_str = Files_str.new()
+    subfiles_str = Files_str.new
     files_str[:arr_sub_filters].push(subfiles_str)
     vc8_parse_file_list(project_name, subfilter, subfiles_str)
   }
 
-  arr_sources = Array.new()
+  arr_sources = Array.new
   vcproj_filter.elements.each("File") { |file_xml|
     vc8_parse_file(project_name, file_xml, arr_sources)
   } # |file|
@@ -1155,9 +1155,9 @@ tmpfile = Tempfile.new('vcproj2cmake')
 
 File.open(tmpfile.path, "w") { |out|
 
-  $global_generator_func = V2C_CMakeGlobalGenerator.new(out)
+  $global_generator = V2C_CMakeGlobalGenerator.new(out)
 
-  $global_generator_func.put_file_header()
+  $global_generator.put_file_header()
 
   File.open(vcproj_filename) { |io|
     parser_base = V2C_BaseVCProjGlobalParser.new
@@ -1194,10 +1194,10 @@ File.open(tmpfile.path, "w") { |out|
 
       $have_build_units = false
 
-      configuration_types = Array.new()
+      configuration_types = Array.new
       vc8_get_configuration_types(project_xml, configuration_types)
 
-      main_files = Files_str.new()
+      main_files = Files_str.new
       project_xml.elements.each("Files") { |files|
       	vc8_parse_file_list(target.name, files, main_files)
       }
@@ -1206,9 +1206,9 @@ File.open(tmpfile.path, "w") { |out|
       # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
       ## configuration types need to be stated _before_ declaring the project()!
       #out.puts
-      #$global_generator_func.put_configuration_types(configuration_types)
+      #$global_generator.put_configuration_types(configuration_types)
 
-      $global_generator_func.put_project(target.name)
+      $global_generator.put_project(target.name)
 
       ## sub projects will inherit, and we _don't_ want that...
       # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
@@ -1216,15 +1216,15 @@ File.open(tmpfile.path, "w") { |out|
       #puts_ind(out, "set( V2C_LIBS )")
       #puts_ind(out, "set( V2C_SOURCES )")
 
-      $global_generator_func.put_include_MasterProjectDefaults_vcproj2cmake()
+      $global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
 
-      $global_generator_func.put_hook_project()
+      $global_generator.put_hook_project()
 
       # HACK: for now, have one global instance of the target generator
-      $target_generator_func = V2C_CMakeTargetGenerator.new(target, local_generator, out)
+      $target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
 
       arr_sub_sources = Array.new
-      $target_generator_func.put_file_list(target.name, main_files, nil, arr_sub_sources)
+      $target_generator.put_file_list(target.name, main_files, nil, arr_sub_sources)
 
       if not arr_sub_sources.empty?
         # add a ${V2C_SOURCES} variable to the list, to be able to append
@@ -1235,9 +1235,9 @@ File.open(tmpfile.path, "w") { |out|
         puts_warn "#{target.name}: no source files at all!? (header-based project?)"
       end
 
-      $global_generator_func.put_include_project_source_dir()
+      $global_generator.put_include_project_source_dir()
 
-      $global_generator_func.put_hook_post_sources()
+      $global_generator.put_hook_post_sources()
 
       # ARGH, we have an issue with CMake not being fully up to speed with
       # multi-configuration generators (e.g. .vcproj):
@@ -1303,7 +1303,7 @@ File.open(tmpfile.path, "w") { |out|
         config_info.use_of_mfc = config_xml.attributes["UseOfMFC"].to_i
         config_info.use_of_atl = config_xml.attributes["UseOfATL"].to_i
 
-	$global_generator_func.put_cmake_mfc_atl_flag(config_info)
+	$global_generator.put_cmake_mfc_atl_flag(config_info)
 
         hash_defines = Hash.new
         arr_flags = Array.new
@@ -1313,7 +1313,7 @@ File.open(tmpfile.path, "w") { |out|
           attr_opts = compiler_xml.attributes["AdditionalOptions"]
 
 	  if not attr_incdir.nil?
-            arr_includes = Array.new()
+            arr_includes = Array.new
             include_dirs = attr_incdir.split(/#{$vc8_value_separator_regex}/).sort.each { |elem_inc_dir|
                 elem_inc_dir = normalize_path(elem_inc_dir).strip
 		elem_inc_dir = vc8_handle_config_variables(elem_inc_dir, arr_config_var_handling)
@@ -1355,7 +1355,7 @@ File.open(tmpfile.path, "w") { |out|
         }
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
-	$global_generator_func.put_hook_post_definitions()
+	$global_generator.put_hook_post_definitions()
 
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
@@ -1364,11 +1364,11 @@ File.open(tmpfile.path, "w") { |out|
 
           # first add source reference, then do linker setup, then create target
 
-	  $target_generator_func.put_sources(arr_sub_sources)
+	  $target_generator.put_sources(arr_sub_sources)
 
 	  # parse linker configuration...
-          arr_dependencies = Array.new()
-	  arr_lib_dirs = Array.new()
+          arr_dependencies = Array.new
+	  arr_lib_dirs = Array.new
           config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
             attr_deps = linker_xml.attributes["AdditionalDependencies"]
             if attr_deps and attr_deps.length > 0
@@ -1397,7 +1397,7 @@ File.open(tmpfile.path, "w") { |out|
 	  # write link_directories() (BEFORE establishing a target!)
           arr_lib_dirs.push("${V2C_LIB_DIRS}")
 
-          map_lib_dirs = Hash.new()
+          map_lib_dirs = Hash.new
           read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
 	  local_generator.write_link_directories(arr_lib_dirs, map_lib_dirs)
 
@@ -1442,17 +1442,17 @@ File.open(tmpfile.path, "w") { |out|
             puts_fatal "Project type #{config_info.type} not supported."
           end
 
-	  # write target_link_libraries() in case there's a target
+	  # write target_link_libraries() in case there's a valid target
           if not target_name.nil?
             arr_dependencies.push("${V2C_LIBS}")
 
-            map_dependencies = Hash.new()
+            map_dependencies = Hash.new
             read_mappings_combined($filename_map_dep, map_dependencies)
-	    $target_generator_func.write_link_libraries(arr_dependencies, map_dependencies)
+	    $target_generator.write_link_libraries(arr_dependencies, map_dependencies)
           end # not target_name.nil?
         end # not arr_sub_sources.empty?
 
-	$global_generator_func.put_hook_post_target()
+	$global_generator.put_hook_post_target()
 
 	syntax_generator.write_conditional_end(build_type_condition)
 
@@ -1465,18 +1465,18 @@ File.open(tmpfile.path, "w") { |out|
 	    hash_defines["_AFXDLL"] = ""
           end
 
-          map_defines = Hash.new()
+          map_defines = Hash.new
           read_mappings_combined($filename_map_def, map_defines)
 	  syntax_generator.write_conditional_begin("TARGET #{target_name}")
-          $target_generator_func.write_property_compile_definitions(config_name, hash_defines, map_defines)
+          $target_generator.write_property_compile_definitions(config_name, hash_defines, map_defines)
     	  # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-          $target_generator_func.write_property_compile_flags(config_name, arr_flags, "MSVC")
+          $target_generator.write_property_compile_flags(config_name, arr_flags, "MSVC")
 	  syntax_generator.write_conditional_end("TARGET #{target_name}")
         end
       } # [END per-config handling]
 
       if not target_name.nil?
-	$target_generator_func.set_properties_vs_scc(scc_info)
+	$target_generator.set_properties_vs_scc(scc_info)
 
         # TODO: might want to set a target's FOLDER property, too...
         # (and perhaps a .vcproj has a corresponding attribute
@@ -1485,7 +1485,7 @@ File.open(tmpfile.path, "w") { |out|
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # not target_name.nil?
 
-      $global_generator_func.put_var_converter_script_location(script_location_relative_to_master)
+      $global_generator.put_var_converter_script_location(script_location_relative_to_master)
       local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, p_vcproj.basename)
     }
   }
