@@ -408,6 +408,21 @@ class V2C_CMakeSyntaxGenerator
     return $v2c_generated_comments_level
   end
 
+  def write_comment_ind_conditional(level, *parts)
+    if generated_comments_level() >= level
+      parts.each { |part|
+	puts_ind(@out, part)
+      }
+    end
+  end
+  def write_comment_conditional(level, *parts)
+    if generated_comments_level() >= level
+      parts.each { |part|
+	@out.puts part
+      }
+    end
+  end
+
   def write_empty_line
     @out.puts
   end
@@ -425,9 +440,7 @@ class V2C_CMakeSyntaxGenerator
     end
   end
   def write_vcproj2cmake_func_comment()
-    if generated_comments_level() >= 2
-      puts_ind(@out, "# See function implementation/docs in #{$v2c_module_path_root}/#{$vcproj2cmake_func_cmake}")
-    end
+    write_comment_ind_conditional(2, "# See function implementation/docs in #{$v2c_module_path_root}/#{$vcproj2cmake_func_cmake}")
   end
 end
 
@@ -468,19 +481,19 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     new_puts_ind(@out, "include(\"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt\" OPTIONAL)")
   end
   def put_hook_project
-    if generated_comments_level() >= 2
-      puts_ind(@out, "# hook e.g. for invoking Find scripts as expected by")
-      puts_ind(@out, "# the _LIBRARIES / _INCLUDE_DIRS mappings created")
-      puts_ind(@out, "# by your include/dependency map files.")
-    end
+    write_comment_ind_conditional(2, \
+      "# hook e.g. for invoking Find scripts as expected by", \
+      "# the _LIBRARIES / _INCLUDE_DIRS mappings created", \
+      "# by your include/dependency map files." \
+    )
     puts_ind(@out, "include(\"${V2C_HOOK_PROJECT}\" OPTIONAL)")
   end
   def put_hook_post_definitions
     write_empty_line()
-    if generated_comments_level() >= 1
-      puts_ind(@out, "# hook include after all definitions have been made")
-      puts_ind(@out, "# (but _before_ target is created using the source list!)")
-    end
+    write_comment_ind_conditional(1, \
+	"# hook include after all definitions have been made", \
+	"# (but _before_ target is created using the source list!)" \
+    )
     puts_ind(@out, "include(\"${V2C_HOOK_POST_DEFINITIONS}\" OPTIONAL)")
   end
   def put_hook_post_sources
@@ -488,9 +501,9 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_hook_post_target
     write_empty_line()
-    if generated_comments_level() >= 1
-      puts_ind(@out, "# e.g. to be used for tweaking target properties etc.")
-    end
+    write_comment_ind_conditional(1, \
+      "# e.g. to be used for tweaking target properties etc." \
+    )
     puts_ind(@out, "include(\"${V2C_HOOK_POST_TARGET}\" OPTIONAL)")
   end
   def put_include_project_source_dir
@@ -508,18 +521,17 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # add handling of a script file location variable, to enable users
     # to override the script location if needed.
     write_empty_line()
-    if generated_comments_level() >= 1
-      puts_ind(@out, "# user override mechanism (allow defining custom location of script)")
-    end
-    puts_ind(@out, "if(NOT V2C_SCRIPT_LOCATION)")
-    cmake_indent_more()
+    write_comment_ind_conditional(1, \
+      "# user override mechanism (allow defining custom location of script)" \
+    )
+    str_conditional = "NOT V2C_SCRIPT_LOCATION"
+    write_conditional_begin(str_conditional)
     # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
     # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
     # (this provision should even enable people to manually relocate
     # an entire sub project within the source tree).
     puts_ind(@out, "set(V2C_SCRIPT_LOCATION \"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\")")
-    cmake_indent_less()
-    puts_ind(@out, "endif(NOT V2C_SCRIPT_LOCATION)")
+    write_conditional_end(str_conditional)
   end
 
   def initialize(out)
@@ -567,9 +579,9 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_file_header_cmake_minimum_version
     # Required version line to make cmake happy.
-    if generated_comments_level() >= 1
-      @out.puts "# >= 2.6 due to crucial set_property(... COMPILE_DEFINITIONS_* ...)"
-    end
+    write_comment_conditional(1, \
+      "# >= 2.6 due to crucial set_property(... COMPILE_DEFINITIONS_* ...)" \
+    )
     @out.puts "cmake_minimum_required(VERSION 2.6)"
   end
   def put_file_header_cmake_policies
@@ -579,32 +591,32 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
 if(COMMAND cmake_policy)
   if(POLICY CMP0005)
 }
-    if generated_comments_level() >= 3
-      @out.puts "    # automatic quoting of brackets"
-    end
+    write_comment_conditional(3, \
+      "    # automatic quoting of brackets" \
+    )
     @out.puts %{\
     cmake_policy(SET CMP0005 NEW)
   endif(POLICY CMP0005)
 
   if(POLICY CMP0011)
 }
-    if generated_comments_level() >= 3
-      @out.puts %{\
+    write_comment_conditional(3, \
+      %{\
     # we do want the includer to be affected by our updates,
     # since it might define project-global settings.
-}
-    end
+} \
+    )
     @out.puts %{\
     cmake_policy(SET CMP0011 OLD)
   endif(POLICY CMP0011)
   if(POLICY CMP0015)
 }
-    if generated_comments_level() >= 3
-      @out.puts %{\
+    write_comment_conditional(3, \
+      %{\
     # .vcproj contains relative paths to additional library directories,
     # thus we need to be able to cope with that
-}
-    end
+} \
+    )
     @out.puts %{\
     cmake_policy(SET CMP0015 NEW)
   endif(POLICY CMP0015)
@@ -628,10 +640,10 @@ endif(COMMAND cmake_policy)
   end
   def put_include_vcproj2cmake_func
     write_empty_line()
-    if generated_comments_level() >= 2
-      puts_ind(@out, "# include the main file for pre-defined vcproj2cmake helper functions")
-      puts_ind(@out, "# This module will also include the configuration settings definitions module")
-    end
+    write_comment_ind_conditional(2, \
+      "# include the main file for pre-defined vcproj2cmake helper functions", \
+      "# This module will also include the configuration settings definitions module" \
+    )
     puts_ind(@out, "include(vcproj2cmake_func)")
   end
 end
@@ -681,10 +693,10 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   end
 
   def write_link_directories(arr_lib_dirs, map_lib_dirs)
-    if generated_comments_level() >= 3
-      puts_ind(@out, "# It is said to be preferable to be able to use target_link_libraries()")
-      puts_ind(@out, "# rather than the very unspecific link_directories().")
-    end
+    write_comment_ind_conditional(3, \
+      "# It is said to be preferable to be able to use target_link_libraries()", \
+      "# rather than the very unspecific link_directories()." \
+    )
     write_build_attributes("link_directories", "", arr_lib_dirs, map_lib_dirs, nil)
   end
   def write_directory_property_compile_flags(attr_opts)
