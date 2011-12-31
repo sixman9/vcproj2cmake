@@ -313,40 +313,6 @@ end
 $cmake_var_match_regex = "\\$\\{[[:alnum:]_]+\\}"
 $cmake_env_var_match_regex = "\\$ENV\\{[[:alnum:]_]+\\}"
 
-# (un)quote strings as needed
-#
-# Once we added a variable in the string,
-# we definitely _need_ to have the resulting full string quoted
-# in the generated file, otherwise we won't obey
-# CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
-# However, there is a strong argument to be made for applying the quotes
-# on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
-# that such strings need quoting.
-def cmake_element_handle_quoting(elem)
-  # Determine whether quoting needed
-  # (in case of whitespace or variable content):
-  #if elem.match(/\s|#{$cmake_var_match_regex}|#{$cmake_env_var_match_regex}/)
-  # Hrmm, turns out that variables better should _not_ be quoted.
-  # But what we _do_ need to quote is regular strings which include
-  # whitespace characters, i.e. check for alphanumeric char following
-  # whitespace or the other way around.
-  # Quoting rules seem terribly confusing, will need to revisit things
-  # to get it all precisely correct.
-  if elem.match(/[:alnum:]\s|\s[:alnum:]/)
-    needs_quoting = 1
-  end
-  if elem.match(/".*"/)
-    has_quotes = 1
-  end
-  if needs_quoting and not has_quotes
-    return "\"#{elem}\""
-  end
-  if not needs_quoting and has_quotes
-    return elem.gsub(/"(.*)"/, '\1')
-  end
-  return elem
-end
-
 # IMPORTANT NOTE: the generator/target/parser class hierarchy and _naming_
 # is supposed to be eerily similar to the one used by CMake.
 # Dito for naming of individual methods...
@@ -659,6 +625,40 @@ end
 # analogous to CMake separate_arguments() command
 def cmake_separate_arguments(array_in)
   array_in.join(";")
+end
+
+# (un)quote strings as needed
+#
+# Once we added a variable in the string,
+# we definitely _need_ to have the resulting full string quoted
+# in the generated file, otherwise we won't obey
+# CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
+# However, there is a strong argument to be made for applying the quotes
+# on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
+# that such strings need quoting.
+def cmake_element_handle_quoting(elem)
+  # Determine whether quoting needed
+  # (in case of whitespace or variable content):
+  #if elem.match(/\s|#{$cmake_var_match_regex}|#{$cmake_env_var_match_regex}/)
+  # Hrmm, turns out that variables better should _not_ be quoted.
+  # But what we _do_ need to quote is regular strings which include
+  # whitespace characters, i.e. check for alphanumeric char following
+  # whitespace or the other way around.
+  # Quoting rules seem terribly confusing, will need to revisit things
+  # to get it all precisely correct.
+  if elem.match(/[:alnum:]\s|\s[:alnum:]/)
+    needs_quoting = 1
+  end
+  if elem.match(/".*"/)
+    has_quotes = 1
+  end
+  if needs_quoting and not has_quotes
+    return "\"#{elem}\""
+  end
+  if not needs_quoting and has_quotes
+    return elem.gsub(/"(.*)"/, '\1')
+  end
+  return elem
 end
 
 class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
