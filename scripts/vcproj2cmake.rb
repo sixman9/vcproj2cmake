@@ -124,6 +124,15 @@ end
 
 ### USER-CONFIGURABLE SECTION ###
 
+# global variable to indicate whether we want debug output or not
+$debug = false
+
+# Initial number of spaces for indenting
+$indent_num_spaces = 0
+
+# Number of spaces to increment by
+$indent_step = 2
+
 # since the .vcproj multi-configuration environment has some settings
 # that can be specified per-configuration (target type [lib/exe], include directories)
 # but where CMake unfortunately does _NOT_ offer a configuration-specific equivalent,
@@ -136,11 +145,6 @@ config_multi_authoritative = ""
 $filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
 $filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
 $filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
-
-$myindent = 0
-
-# global variable to indicate whether we want debug output or not
-$debug = false
 
 ### USER-CONFIGURABLE SECTION END ###
 
@@ -176,6 +180,16 @@ $vcproj2cmake_func_cmake = "vcproj2cmake_func.cmake"
 $v2c_attribute_not_provided_marker = "V2C_NOT_PROVIDED"
 
 
+$indent_now = $indent_num_spaces
+
+def cmake_indent_more
+  $indent_now += $indent_step
+end
+
+def cmake_indent_less
+  $indent_now -= $indent_step
+end
+
 def puts_debug(str)
   if $debug
     puts str
@@ -201,7 +215,7 @@ def puts_fatal(str)
 end
 
 def puts_ind(chan, str)
-  chan.print ' ' * $myindent
+  chan.print ' ' * $indent_now
   chan.puts str
 end
 
@@ -401,12 +415,12 @@ class V2C_CMakeSyntaxGenerator
   def write_conditional_begin(str_conditional)
     if not str_conditional.nil?
       puts_ind(@out, "if(#{str_conditional})")
-      $myindent += 2
+      cmake_indent_more()
     end
   end
   def write_conditional_end(str_conditional)
     if not str_conditional.nil?
-      $myindent -= 2
+      cmake_indent_less()
       puts_ind(@out, "endif(#{str_conditional})")
     end
   end
@@ -498,13 +512,13 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
       puts_ind(@out, "# user override mechanism (allow defining custom location of script)")
     end
     puts_ind(@out, "if(NOT V2C_SCRIPT_LOCATION)")
-    $myindent += 2
+    cmake_indent_more()
     # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
     # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
     # (this provision should even enable people to manually relocate
     # an entire sub project within the source tree).
     puts_ind(@out, "set(V2C_SCRIPT_LOCATION \"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\")")
-    $myindent -= 2
+    cmake_indent_less()
     puts_ind(@out, "endif(NOT V2C_SCRIPT_LOCATION)")
   end
 
@@ -759,12 +773,12 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # process sub-filters, have their main source variable added to arr_my_sub_sources
     arr_my_sub_sources = Array.new
     if not arr_sub_filters.nil?
-      $myindent += 2
+      cmake_indent_more()
       arr_sub_filters.each { |subfilter|
         #puts_info "writing: #{subfilter}"
         put_file_list(project_name, subfilter, this_source_group, arr_my_sub_sources)
       }
-      $myindent -= 2
+      cmake_indent_less()
     end
   
     group_tag = this_source_group.clone.gsub(/( |\\)/,'_')
@@ -787,7 +801,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     if not source_files_variable.nil? or not arr_my_sub_sources.empty?
       sources_variable = "SOURCES_#{group_tag}";
       new_puts_ind(@out, "set(SOURCES_#{group_tag}")
-      $myindent += 2;
+      cmake_indent_more();
       # dump sub filters...
       arr_my_sub_sources.each { |source|
         puts_ind(@out, "${#{source}}")
@@ -796,7 +810,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       if not source_files_variable.nil?
         puts_ind(@out, "${#{source_files_variable}}")
       end
-      $myindent -= 2;
+      cmake_indent_less();
       puts_ind(@out, ")")
       # add our source list variable to parent return
       arr_sub_sources_for_parent.push(sources_variable)
@@ -804,18 +818,18 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_sources(arr_sub_sources)
     new_puts_ind(@out, "set(SOURCES")
-    $myindent += 2
+    cmake_indent_more()
     arr_sub_sources.each { |source_item|
       puts_ind(@out, "${#{source_item}}")
     }
-    $myindent -= 2
+    cmake_indent_less()
     puts_ind(@out, ")")
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
       write_conditional_begin(str_platform)
       # make sure to specify APPEND for greater flexibility (hooks etc.)
       puts_ind(@out, "set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper}")
-      $myindent += 2
+      cmake_indent_more()
       # FIXME: we should probably get rid of sort() here,
       # but for now we'll keep it, to retain identically generated files.
       arr_platdefs.sort.each do |compile_defn|
@@ -826,7 +840,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
         end
         puts_ind(@out, compile_defn)
       end
-      $myindent -= 2
+      cmake_indent_less()
       puts_ind(@out, ")")
       write_conditional_end(str_platform)
   end
