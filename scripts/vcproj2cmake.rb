@@ -716,10 +716,12 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
         cmake_command_arg = ""
       end
       puts_ind(@out, "#{cmake_command}(#{cmake_command_arg}")
+      cmake_indent_more()
       arr_platdefs.each do |curr_value|
         curr_value_quot = cmake_element_handle_quoting(curr_value)
-        puts_ind(@out, "  #{element_prefix}#{curr_value_quot}")
+        puts_ind(@out, "#{element_prefix}#{curr_value_quot}")
       end
+      cmake_indent_less()
       puts_ind(@out, ")")
       write_conditional_end(str_platform)
     }
@@ -735,9 +737,11 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     if project_keyword.nil?
 	project_keyword = "#{$v2c_attribute_not_provided_marker}"
     end
-    puts_ind(@out, "  \"#{project_name}\" \"#{project_keyword}\"")
-    puts_ind(@out, "  \"${CMAKE_CURRENT_SOURCE_DIR}/#{vs_proj_file_basename}\"")
-    puts_ind(@out, "  \"${CMAKE_CURRENT_LIST_FILE}\")")
+    cmake_indent_more()
+    puts_ind(@out, "\"#{project_name}\" \"#{project_keyword}\"")
+    puts_ind(@out, "\"${CMAKE_CURRENT_SOURCE_DIR}/#{vs_proj_file_basename}\"")
+    puts_ind(@out, "\"${CMAKE_CURRENT_LIST_FILE}\")")
+    cmake_indent_less()
   end
 end
 
@@ -787,11 +791,13 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     if not arr_local_sources.nil?
       source_files_variable = "SOURCES_files_#{group_tag}"
       new_puts_ind(@out, "set(#{source_files_variable}" )
+      cmake_indent_more()
       arr_local_sources.each { |source|
         #puts_info "quotes now: #{source}"
         source_quot = cmake_element_handle_quoting(source)
-        puts_ind(@out, "  #{source_quot}")
+        puts_ind(@out, source_quot)
       }
+      cmake_indent_less()
       puts_ind(@out, ")")
       # create source_group() of our local files
       if not parent_source_group.nil?
@@ -876,9 +882,11 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_empty_line()
     write_conditional_begin(str_conditional)
     puts_ind(@out, "set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}")
+    cmake_indent_more()
     arr_flags.each do |compile_flag|
-      puts_ind(@out, "  #{compile_flag}")
+      puts_ind(@out, compile_flag)
     end
+    cmake_indent_less()
     puts_ind(@out, ")")
     write_conditional_end(str_conditional)
   end
