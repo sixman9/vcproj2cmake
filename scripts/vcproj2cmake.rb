@@ -713,7 +713,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     if not arr_includes.empty?
       arr_includes_translated = Array.new
       arr_includes.each { |elem_inc_dir|
-        elem_inc_dir = vc8_handle_config_variables(elem_inc_dir, @arr_config_var_handling)
+        elem_inc_dir = vs7_handle_config_variables(elem_inc_dir, @arr_config_var_handling)
         arr_includes_translated.push(elem_inc_dir)
       }
       write_build_attributes("include_directories", "", arr_includes_translated, map_includes, nil)
@@ -723,7 +723,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   def write_link_directories(arr_lib_dirs, map_lib_dirs)
     arr_lib_dirs_translated = Array.new
     arr_lib_dirs.each { |elem_lib_dir|
-      elem_lib_dir = vc8_handle_config_variables(elem_lib_dir, @arr_config_var_handling)
+      elem_lib_dir = vs7_handle_config_variables(elem_lib_dir, @arr_config_var_handling)
       arr_lib_dirs_translated.push(elem_lib_dir)
     }
     write_comment_at_level(3, \
@@ -1003,10 +1003,10 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
 end
 
-$vc8_prop_var_scan_regex = "\\$\\(([[:alnum:]_]+)\\)"
-$vc8_prop_var_match_regex = "\\$\\([[:alnum:]_]+\\)"
+$vs7_prop_var_scan_regex = "\\$\\(([[:alnum:]_]+)\\)"
+$vs7_prop_var_match_regex = "\\$\\([[:alnum:]_]+\\)"
 
-$vc8_value_separator_regex = "[;,]"
+$vs7_value_separator_regex = "[;,]"
 
 class V2C_VS7Parser
   def read_compiler_additional_include_directories(compiler_xml, arr_includes)
@@ -1014,7 +1014,7 @@ class V2C_VS7Parser
     if not attr_incdir.nil?
       # FIXME: we should probably get rid of sort() here (and elsewhere),
       # but for now we'll keep it, to retain identically generated files.
-      include_dirs = attr_incdir.split(/#{$vc8_value_separator_regex}/).sort.each { |elem_inc_dir|
+      include_dirs = attr_incdir.split(/#{$vs7_value_separator_regex}/).sort.each { |elem_inc_dir|
         elem_inc_dir = normalize_path(elem_inc_dir).strip
         #log_info "include is '#{elem_inc_dir}'"
         arr_includes.push(elem_inc_dir)
@@ -1025,7 +1025,7 @@ class V2C_VS7Parser
   def read_compiler_preprocessor_definitions(compiler_xml, hash_defines)
     attr_defines = compiler_xml.attributes["PreprocessorDefinitions"]
     if not attr_defines.nil?
-      attr_defines.split(/#{$vc8_value_separator_regex}/).each { |elem_define|
+      attr_defines.split(/#{$vs7_value_separator_regex}/).each { |elem_define|
         str_define_key, str_define_value = elem_define.strip.split(/=/)
         # Since a Hash will indicate nil for any non-existing key,
         # we do need to fill in _empty_ value for our _existing_ key.
@@ -1050,7 +1050,7 @@ class V2C_VS7Parser
   def read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
     attr_lib_dirs = linker_xml.attributes["AdditionalLibraryDirectories"]
     if attr_lib_dirs and attr_lib_dirs.length > 0
-      attr_lib_dirs.split(/#{$vc8_value_separator_regex}/).each { |elem_lib_dir|
+      attr_lib_dirs.split(/#{$vs7_value_separator_regex}/).each { |elem_lib_dir|
         elem_lib_dir = normalize_path(elem_lib_dir).strip
         #log_info "lib dir is '#{elem_lib_dir}'"
         arr_lib_dirs.push(elem_lib_dir)
@@ -1059,7 +1059,7 @@ class V2C_VS7Parser
   end
 end
 
-def vc8_parse_file(project_name, file_xml, arr_sources)
+def vs7_parse_file(project_name, file_xml, arr_sources)
   f = normalize_path(file_xml.attributes["RelativePath"])
 
   ## Ignore header files
@@ -1132,18 +1132,18 @@ end
 
 Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
 
-def vc8_get_config_name(config_xml)
+def vs7_get_config_name(config_xml)
   config_xml.attributes["Name"].split("|")[0]
 end
 
-def vc8_get_configuration_types(project_xml, configuration_types)
+def vs7_get_configuration_types(project_xml, configuration_types)
   project_xml.elements.each("Configurations/Configuration") { |config_xml|
-    config_name = vc8_get_config_name(config_xml)
+    config_name = vs7_get_config_name(config_xml)
     configuration_types.push(config_name)
   }
 end
 
-def vc8_parse_file_list(project_name, vcproj_filter, files_str)
+def vs7_parse_file_list(project_name, vcproj_filter, files_str)
   file_group_name = vcproj_filter.attributes["Name"]
   if file_group_name.nil?
     file_group_name = "COMMON"
@@ -1179,12 +1179,12 @@ def vc8_parse_file_list(project_name, vcproj_filter, files_str)
     end
     subfiles_str = Files_str.new
     files_str[:arr_sub_filters].push(subfiles_str)
-    vc8_parse_file_list(project_name, subfilter, subfiles_str)
+    vs7_parse_file_list(project_name, subfilter, subfiles_str)
   }
 
   arr_sources = Array.new
   vcproj_filter.elements.each("File") { |file_xml|
-    vc8_parse_file(project_name, file_xml, arr_sources)
+    vs7_parse_file(project_name, file_xml, arr_sources)
   } # |file|
 
   if not arr_sources.empty?
@@ -1197,10 +1197,10 @@ end
 #   http://msdn.microsoft.com/en-us/library/ms171459.aspx
 # "Macros for Build Commands and Properties"
 #   http://msdn.microsoft.com/en-us/library/c02as0cs%28v=vs.71%29.aspx
-def vc8_handle_config_variables(str, arr_config_var_handling)
+def vs7_handle_config_variables(str, arr_config_var_handling)
   # http://langref.org/all-languages/pattern-matching/searching/loop-through-a-string-matching-a-regex-and-performing-an-action-for-each-match
   str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
-  str_scan_copy.scan(/#{$vc8_prop_var_scan_regex}/) {
+  str_scan_copy.scan(/#{$vs7_prop_var_scan_regex}/) {
     config_var = $1
     # MSVS Property / Environment variables are documented to be case-insensitive,
     # thus implement insensitive match:
@@ -1336,11 +1336,11 @@ File.open(tmpfile.path, "w") { |out|
       $have_build_units = false
 
       configuration_types = Array.new
-      vc8_get_configuration_types(project_xml, configuration_types)
+      vs7_get_configuration_types(project_xml, configuration_types)
 
       main_files = Files_str.new
       project_xml.elements.each("Files") { |files|
-      	vc8_parse_file_list(target.name, files, main_files)
+      	vs7_parse_file_list(target.name, files, main_files)
       }
 
       # we likely shouldn't declare this, since for single-configuration
@@ -1402,7 +1402,7 @@ File.open(tmpfile.path, "w") { |out|
       if config_multi_authoritative.empty?
 	project_configuration_first_xml = project_xml.elements["Configurations/Configuration"].next_element
 	if not project_configuration_first_xml.nil?
-          config_multi_authoritative = vc8_get_config_name(project_configuration_first_xml)
+          config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
 	end
       end
 
@@ -1425,7 +1425,7 @@ File.open(tmpfile.path, "w") { |out|
       project_xml.elements.each("Configurations/Configuration") { |config_xml|
 	config_info = V2C_Config_Info.new
 
-        config_info.name = vc8_get_config_name(config_xml)
+        config_info.name = vs7_get_config_name(config_xml)
 
         config_info.type = config_xml.attributes["ConfigurationType"].to_i
 
