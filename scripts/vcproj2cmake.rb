@@ -4,7 +4,7 @@
 # allows for ongoing side-by-side operation (e.g. on Linux, Mac)
 # together with the existing static .vcproj project on the Windows side.
 # Provides good support for simple DLL/Static/Executable projects,
-# but custom build steps and build events are ignored.
+# but custom build steps and build events are currently ignored.
 
 # Author: Jesper Eskilson
 # Email: jesper [at] eskilson [dot] se
@@ -23,9 +23,13 @@
 
 # TODO/NOTE:
 # Always make sure that a simple vcproj2cmake.rb run will result in a
-# fully working _self-contained_ CMakeLists.txt, no matter how small
-# the current vcproj2cmake config environment is
-# (i.e., it needs to work even without a single specification file)
+# fully working almost completely _self-contained_ CMakeLists.txt,
+# no matter how small the current vcproj2cmake config environment is
+# (i.e., it needs to work even without a single specification file
+# other than vcproj2cmake_func.cmake)
+# Useful check: use different versions of this project, then diff resulting
+# changes in generated CMakeLists.txt content - this should provide a nice
+# opportunity to spot bugs which crept in from version to version.
 
 # TODO:
 # - perhaps there's a way to provide more precise/comfortable hook script handling?
