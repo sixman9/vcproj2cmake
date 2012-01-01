@@ -916,20 +916,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # then we can bail out right away...
     return if scc_info.project_name.nil?
 
-    if scc_info.local_path
-      escape_backslash(scc_info.local_path)
-      escape_char(scc_info.local_path, '"')
-    end
-    if scc_info.provider
-      escape_char(scc_info.provider, '"')
-    end
-    if scc_info.aux_path
-      escape_backslash(scc_info.aux_path)
-      escape_char(scc_info.aux_path, '"')
-    end
-    write_empty_line()
-    local_generator.write_vcproj2cmake_func_comment()
-    # hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
+    # Hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
     # NOTE: needed to clone() this string above since otherwise modifying (same) source object!!
     # We used to escape_char('"') below, but this was problematic
     # on VS7 .vcproj generator since that one is BUGGY (GIT trunk
@@ -945,6 +932,20 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # Note that perhaps we should also escape all other chars
     # as in CMake's EscapeForXML() method.
     scc_info.project_name.gsub!(/"/, "&quot;")
+    if scc_info.local_path
+      escape_backslash(scc_info.local_path)
+      escape_char(scc_info.local_path, '"')
+    end
+    if scc_info.provider
+      escape_char(scc_info.provider, '"')
+    end
+    if scc_info.aux_path
+      escape_backslash(scc_info.aux_path)
+      escape_char(scc_info.aux_path, '"')
+    end
+
+    write_empty_line()
+    local_generator.write_vcproj2cmake_func_comment()
     puts_ind(@out, "v2c_target_set_properties_vs_scc(#{@target.name} \"#{scc_info.project_name}\" \"#{scc_info.local_path}\" \"#{scc_info.provider}\" \"#{scc_info.aux_path}\")")
   end
 
