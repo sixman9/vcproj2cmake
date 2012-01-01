@@ -148,7 +148,7 @@ $filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
 ### USER-CONFIGURABLE SECTION END ###
 
-master_project_location = File.expand_path $master_project_dir
+master_project_location = File.expand_path($master_project_dir)
 p_master_proj = Pathname.new(master_project_location)
 
 p_vcproj = Pathname.new(vcproj_filename)
@@ -161,7 +161,7 @@ $project_dir = p_vcproj.dirname
 #p_cmakelists_dir = Pathname.new(cmakelists_dir)
 #p_cmakelists_dir.relative_path_from(...)
 
-script_location = File.expand_path "#{script_name}"
+script_location = File.expand_path(script_name)
 p_script = Pathname.new(script_location)
 script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
 #puts "p_script #{p_script} | p_master_proj #{p_master_proj} | script_location_relative_to_master #{script_location_relative_to_master}"
