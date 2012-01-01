@@ -713,7 +713,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     if not arr_includes.empty?
       arr_includes_translated = Array.new
       arr_includes.each { |elem_inc_dir|
-        elem_inc_dir = vs7_handle_config_variables(elem_inc_dir, @arr_config_var_handling)
+        elem_inc_dir = vs7_create_config_variable_translation(elem_inc_dir, @arr_config_var_handling)
         arr_includes_translated.push(elem_inc_dir)
       }
       write_build_attributes("include_directories", "", arr_includes_translated, map_includes, nil)
@@ -723,7 +723,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   def write_link_directories(arr_lib_dirs, map_lib_dirs)
     arr_lib_dirs_translated = Array.new
     arr_lib_dirs.each { |elem_lib_dir|
-      elem_lib_dir = vs7_handle_config_variables(elem_lib_dir, @arr_config_var_handling)
+      elem_lib_dir = vs7_create_config_variable_translation(elem_lib_dir, @arr_config_var_handling)
       arr_lib_dirs_translated.push(elem_lib_dir)
     }
     write_comment_at_level(3, \
@@ -1197,7 +1197,7 @@ end
 #   http://msdn.microsoft.com/en-us/library/ms171459.aspx
 # "Macros for Build Commands and Properties"
 #   http://msdn.microsoft.com/en-us/library/c02as0cs%28v=vs.71%29.aspx
-def vs7_handle_config_variables(str, arr_config_var_handling)
+def vs7_create_config_variable_translation(str, arr_config_var_handling)
   # http://langref.org/all-languages/pattern-matching/searching/loop-through-a-string-matching-a-regex-and-performing-an-action-for-each-match
   str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
   str_scan_copy.scan(/#{$vs7_prop_var_scan_regex}/) {
