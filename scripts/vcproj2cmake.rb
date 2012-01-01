@@ -819,9 +819,9 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       end
     end
     if not source_files_variable.nil? or not arr_my_sub_sources.empty?
-      sources_variable = "SOURCES_#{group_tag}";
+      sources_variable = "SOURCES_#{group_tag}"
       new_puts_ind(@out, "set(SOURCES_#{group_tag}")
-      cmake_indent_more();
+      cmake_indent_more()
       # dump sub filters...
       arr_my_sub_sources.each { |source|
         puts_ind(@out, "${#{source}}")
@@ -830,7 +830,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       if not source_files_variable.nil?
         puts_ind(@out, "${#{source_files_variable}}")
       end
-      cmake_indent_less();
+      cmake_indent_less()
       puts_ind(@out, ")")
       # add our source list variable to parent return
       arr_sub_sources_for_parent.push(sources_variable)
