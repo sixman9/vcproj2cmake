@@ -362,11 +362,13 @@ class V2C_SCC_Info
     @project_name = nil
     @local_path = nil
     @provider = nil
+    @aux_path = nil
   end
 
   attr_accessor :project_name
   attr_accessor :local_path
   attr_accessor :provider
+  attr_accessor :aux_path
 end
 
 class V2C_Target
@@ -921,6 +923,10 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     if scc_info.provider
       escape_char(scc_info.provider, '"')
     end
+    if scc_info.aux_path
+      escape_backslash(scc_info.aux_path)
+      escape_char(scc_info.aux_path, '"')
+    end
     write_empty_line()
     local_generator.write_vcproj2cmake_func_comment()
     # hmm, perhaps need to use CGI.escape since chars other than just '"' might need to be escaped?
@@ -939,7 +945,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # Note that perhaps we should also escape all other chars
     # as in CMake's EscapeForXML() method.
     scc_info.project_name.gsub!(/"/, "&quot;")
-    puts_ind(@out, "v2c_target_set_properties_vs_scc(#{@target.name} \"#{scc_info.project_name}\" \"#{scc_info.local_path}\" \"#{scc_info.provider}\")")
+    puts_ind(@out, "v2c_target_set_properties_vs_scc(#{@target.name} \"#{scc_info.project_name}\" \"#{scc_info.local_path}\" \"#{scc_info.provider}\" \"#{scc_info.aux_path}\")")
   end
 
   private
@@ -1216,13 +1222,23 @@ File.open(tmpfile.path, "w") { |out|
       scc_info = V2C_SCC_Info.new
       if not project_xml.attributes["SccProjectName"].nil?
         scc_info.project_name = project_xml.attributes["SccProjectName"].clone
-        # hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
-        # exist, too... (one project had SccProvider missing)
+        # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+        # exist, too... (one project had SccProvider missing). HOWEVER,
+	# CMake generator does expect all three to exist when available! Hmm.
+	#
+	# There's a special SAK (Should Already Know) entry marker
+	# (see e.g. http://stackoverflow.com/a/6356615 ).
+	# Currently I don't believe we need to handle "SAK" in special ways
+	# (such as filling it in in case of missing entries),
+	# transparent handling ought to be sufficient.
         if not project_xml.attributes["SccLocalPath"].nil?
           scc_info.local_path = project_xml.attributes["SccLocalPath"].clone
         end
         if not project_xml.attributes["SccProvider"].nil?
           scc_info.provider = project_xml.attributes["SccProvider"].clone
+        end
+        if not project_xml.attributes["SccAuxPath"].nil?
+          scc_info.aux_path = project_xml.attributes["SccAuxPath"].clone
         end
       end
 

@@ -265,7 +265,7 @@ endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 
 # This function will set up target properties gathered from
 # Visual Studio Source Control Management (SCM) elements.
-function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider)
+function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider _vs_scc_auxpath)
   #message(STATUS
   #  "v2c_target_set_properties_vs_scc: target ${_target}"
   #  "VS_SCC_PROJECTNAME ${_vs_scc_projectname} VS_SCC_LOCALPATH ${_vs_scc_localpath}\n"
@@ -279,9 +279,12 @@ function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_lo
     if(_vs_scc_provider)
       list(APPEND target_properties_list_ VS_SCC_PROVIDER "${_vs_scc_provider}")
     endif(_vs_scc_provider)
+    if(_vs_scc_auxpath)
+      list(APPEND target_properties_list_ VS_SCC_AUXPATH "${_vs_scc_auxpath}")
+    endif(_vs_scc_auxpath)
     set_target_properties(${_target} PROPERTIES ${target_properties_list_})
   endif(_vs_scc_projectname)
-endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider)
+endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider _vs_scc_auxpath)
 
 
 if(NOT V2C_INSTALL_ENABLE)
