@@ -27,9 +27,17 @@
 # no matter how small the current vcproj2cmake config environment is
 # (i.e., it needs to work even without a single specification file
 # other than vcproj2cmake_func.cmake)
+#
 # Useful check: use different versions of this project, then diff resulting
 # changes in generated CMakeLists.txt content - this should provide a nice
 # opportunity to spot bugs which crept in from version to version.
+#
+# Tracing (ltrace -s255 -S -tt -f ruby) reveals that overall execution time
+# of this script horribly dwarfs ruby startup time (0.3s vs. 1.9s, on 1.8.7).
+# IOW, there's nothing much we can do, other than increasing efforts to integrate
+# vcproj2cmake_recursive.rb here, too
+# (which should eventually be done for .sln Global / Local generator reasons anyway),
+# to eliminate a huge number of wasteful Ruby startups.
 
 # TODO:
 # - perhaps there's a way to provide more precise/comfortable hook script handling?
