@@ -1312,6 +1312,13 @@ File.open(tmpfile.path, "w") { |out|
 	end
       end
 
+      map_lib_dirs = Hash.new
+      read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
+      map_dependencies = Hash.new
+      read_mappings_combined($filename_map_dep, map_dependencies)
+      map_defines = Hash.new
+      read_mappings_combined($filename_map_def, map_defines)
+
       # target type (library, executable, ...) in .vcproj can be configured per-config
       # (or, in other words, different configs are capable of generating _different_ target _types_
       # for the _same_ target), but in CMake this isn't possible since _one_ target name
@@ -1388,8 +1395,8 @@ File.open(tmpfile.path, "w") { |out|
 	  # Oh well, we might eventually want to provide a full-scale
 	  # translation of various compiler switches to their
 	  # counterparts on compilers of various platforms, but for
-	  # now, let's simply directly pass them on to the compiler on the
-	  # Win32 side.
+	  # now, let's simply directly pass them on to the compiler when on
+	  # Win32 platform.
 	  if not attr_opts.nil?
 	     local_generator.write_directory_property_compile_flags(attr_opts)
 
@@ -1447,8 +1454,6 @@ File.open(tmpfile.path, "w") { |out|
 	  # write link_directories() (BEFORE establishing a target!)
           arr_lib_dirs.push("${V2C_LIB_DIRS}")
 
-          map_lib_dirs = Hash.new
-          read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
 	  local_generator.write_link_directories(arr_lib_dirs, map_lib_dirs)
 
           # FIXME: should use a macro like rosbuild_add_executable(),
@@ -1496,8 +1501,6 @@ File.open(tmpfile.path, "w") { |out|
           if not target_name.nil?
             arr_dependencies.push("${V2C_LIBS}")
 
-            map_dependencies = Hash.new
-            read_mappings_combined($filename_map_dep, map_dependencies)
 	    $target_generator.write_link_libraries(arr_dependencies, map_dependencies)
           end # not target_name.nil?
         end # not arr_sub_sources.empty?
@@ -1515,8 +1518,6 @@ File.open(tmpfile.path, "w") { |out|
 	    hash_defines["_AFXDLL"] = ""
           end
 
-          map_defines = Hash.new
-          read_mappings_combined($filename_map_def, map_defines)
 	  syntax_generator.write_conditional_begin("TARGET #{target_name}")
           $target_generator.write_property_compile_definitions(config_name, hash_defines, map_defines)
     	  # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
