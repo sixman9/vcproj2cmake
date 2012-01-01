@@ -777,15 +777,18 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # that's identical for each project should be implemented by the v2c_post_setup() function
     # _internally_.
     write_vcproj2cmake_func_comment()
-    write_line("v2c_post_setup(#{project_name}")
     if project_keyword.nil?
 	project_keyword = "#{$v2c_attribute_not_provided_marker}"
     end
+    write_line("v2c_post_setup(#{project_name}")
     cmake_indent_more()
-      write_line("\"#{project_name}\" \"#{project_keyword}\"")
-      write_line("\"${CMAKE_CURRENT_SOURCE_DIR}/#{vs_proj_file_basename}\"")
-      write_line("\"${CMAKE_CURRENT_LIST_FILE}\")")
+      write_block( \
+        "\"#{project_name}\" \"#{project_keyword}\"\n" \
+        "\"${CMAKE_CURRENT_SOURCE_DIR}/#{vs_proj_file_basename}\"\n" \
+        "\"${CMAKE_CURRENT_LIST_FILE}\"" \
+      )
     cmake_indent_less()
+    write_line(")")
   end
 end
 
@@ -1143,15 +1146,15 @@ def vs7_get_configuration_types(project_xml, configuration_types)
   }
 end
 
-def vs7_parse_file_list(project_name, vcproj_filter, files_str)
-  file_group_name = vcproj_filter.attributes["Name"]
+def vs7_parse_file_list(project_name, vcproj_filter_xml, files_str)
+  file_group_name = vcproj_filter_xml.attributes["Name"]
   if file_group_name.nil?
     file_group_name = "COMMON"
   end
   files_str[:name] = file_group_name
   log_debug "parsing files group #{files_str[:name]}"
 
-  vcproj_filter.elements.each("Filter") { |subfilter|
+  vcproj_filter_xml.elements.each("Filter") { |subfilter_xml|
     # skip file filters that have a SourceControlFiles property
     # that's set to false, i.e. files which aren't under version
     # control (such as IDL generated files).
@@ -1159,12 +1162,12 @@ def vs7_parse_file_list(project_name, vcproj_filter, files_str)
     # yes, FIXME: on Win32, these files likely _should_ get listed
     # after all. We should probably do a platform check in such
     # cases, i.e. add support for a file_mappings.txt
-    attr_scfiles = subfilter.attributes["SourceControlFiles"]
+    attr_scfiles = subfilter_xml.attributes["SourceControlFiles"]
     if not attr_scfiles.nil? and attr_scfiles.downcase == "false"
       log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
       next
     end
-    attr_scname = subfilter.attributes["Name"]
+    attr_scname = subfilter_xml.attributes["Name"]
     if not attr_scname.nil? and attr_scname == "Generated Files"
       # Hmm, how are we supposed to handle Generated Files?
       # Most likely we _are_ supposed to add such files
@@ -1173,17 +1176,17 @@ def vs7_parse_file_list(project_name, vcproj_filter, files_str)
       next
     end
     # TODO: fetch filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
-    # attr_filter_regex = subfilter.attributes["Filter"]
+    # attr_filter_regex = subfilter_xml.attributes["Filter"]
     if files_str[:arr_sub_filters].nil?
       files_str[:arr_sub_filters] = Array.new
     end
     subfiles_str = Files_str.new
     files_str[:arr_sub_filters].push(subfiles_str)
-    vs7_parse_file_list(project_name, subfilter, subfiles_str)
+    vs7_parse_file_list(project_name, subfilter_xml, subfiles_str)
   }
 
   arr_sources = Array.new
-  vcproj_filter.elements.each("File") { |file_xml|
+  vcproj_filter_xml.elements.each("File") { |file_xml|
     vs7_parse_file(project_name, file_xml, arr_sources)
   } # |file|
 
@@ -1339,8 +1342,8 @@ File.open(tmpfile.path, "w") { |out|
       vs7_get_configuration_types(project_xml, configuration_types)
 
       main_files = Files_str.new
-      project_xml.elements.each("Files") { |files|
-      	vs7_parse_file_list(target.name, files, main_files)
+      project_xml.elements.each("Files") { |files_xml|
+      	vs7_parse_file_list(target.name, files_xml, main_files)
       }
 
       # we likely shouldn't declare this, since for single-configuration
@@ -1398,6 +1401,8 @@ File.open(tmpfile.path, "w") { |out|
       # that the authoritative configuration has an AdditionalIncludeDirectories setting
       # that matches that of all other configs, since we're unable to specify
       # it in a configuration-specific way :(
+      # Well, in that case we should simply resort to generating
+      # the _union_ of all include directories of all configurations...
 
       if config_multi_authoritative.empty?
 	project_configuration_first_xml = project_xml.elements["Configurations/Configuration"].next_element
@@ -1576,8 +1581,8 @@ File.open(tmpfile.path, "w") { |out|
 	syntax_generator.write_conditional_end(build_type_condition)
 
         # NOTE: the commands below can stay in the general section (outside of
-        # build_type_condition above), but only since they define
-        # configuration-_specific_ settings only!
+        # build_type_condition above), but only since they define properties
+        # which are clearly named as being configuration-_specific_ already!
         if target_is_valid
 	  str_conditional = "TARGET #{target.name}"
 	  syntax_generator.write_conditional_begin(str_conditional)
