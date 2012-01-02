@@ -990,7 +990,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     end
 
     write_empty_line()
-    local_generator.write_vcproj2cmake_func_comment()
+    @localGenerator.write_vcproj2cmake_func_comment()
     write_line("v2c_target_set_properties_vs_scc(#{@target.name} \"#{scc_info.project_name}\" \"#{scc_info.local_path}\" \"#{scc_info.provider}\" \"#{scc_info.aux_path}\")")
   end
 
