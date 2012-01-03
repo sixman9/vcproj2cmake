@@ -342,18 +342,41 @@ end
 # target generator: generates targets. This is the one creating/producing the output file stream. Not provided by all generators (VS10 yes, VS7 no).
 
 
+class V2C_Compiler_Info
+  def initialize
+    @arr_flags = Array.new
+    @arr_includes = Array.new
+    @hash_defines = Hash.new
+  end
+  attr_accessor :arr_flags
+  attr_accessor :arr_includes
+  attr_accessor :hash_defines
+end
+
+class V2C_Linker_Info
+  def initialize
+    @arr_dependencies = Array.new
+    @arr_lib_dirs = Array.new
+  end
+  attr_accessor :arr_dependencies
+  attr_accessor :arr_lib_dirs
+end
+
 class V2C_Config_Info
   def initialize
     @name = 0
     @type = 0
     @use_of_mfc = 0
     @use_of_atl = 0
+    @arr_compiler_info = Array.new
+    @arr_linker_info = Array.new
   end
-
   attr_accessor :name
   attr_accessor :type
   attr_accessor :use_of_mfc
   attr_accessor :use_of_atl
+  attr_accessor :arr_compiler_info
+  attr_accessor :arr_linker_info
 end
 
 class V2C_Makefile
@@ -1382,10 +1405,6 @@ File.open(tmpfile.path, "w") { |out|
         log_warn "#{target.name}: no source files at all!? (header-based project?)"
       end
 
-      $global_generator.put_include_project_source_dir()
-
-      $global_generator.put_hook_post_sources()
-
       # ARGH, we have an issue with CMake not being fully up to speed with
       # multi-configuration generators (e.g. .vcproj):
       # it should be able to declare _all_ configuration-dependent settings
@@ -1418,6 +1437,10 @@ File.open(tmpfile.path, "w") { |out|
       map_defines = Hash.new
       read_mappings_combined($filename_map_def, map_defines)
 
+      $global_generator.put_include_project_source_dir()
+
+      $global_generator.put_hook_post_sources()
+
       # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
       # (or, in other words, different configs are capable of generating _different_ target _types_
       # for the _same_ target), but in CMake this isn't possible since _one_ target name
@@ -1427,12 +1450,13 @@ File.open(tmpfile.path, "w") { |out|
       # Thus we need to declare the target variable _outside_ the scope of per-config handling :(
 
       target_is_valid = false
+      arr_config_info = Array.new
       project_xml.elements.each("Configurations/Configuration") { |config_xml|
-	config_info = V2C_Config_Info.new
+	config_info_curr = V2C_Config_Info.new
 
-        config_info.name = vs7_get_config_name(config_xml)
+        config_info_curr.name = vs7_get_config_name(config_xml)
 
-        config_info.type = config_xml.attributes["ConfigurationType"].to_i
+        config_info_curr.type = config_xml.attributes["ConfigurationType"].to_i
 
         # 0 == no MFC
         # 1 == static MFC
@@ -1445,8 +1469,67 @@ File.open(tmpfile.path, "w") { |out|
 	# the differing XML configurations
 	# (e.g. do this via a common base class, then add derived ones
 	# to implement any differences).
-        config_info.use_of_mfc = config_xml.attributes["UseOfMFC"].to_i
-        config_info.use_of_atl = config_xml.attributes["UseOfATL"].to_i
+        config_info_curr.use_of_mfc = config_xml.attributes["UseOfMFC"].to_i
+        config_info_curr.use_of_atl = config_xml.attributes["UseOfATL"].to_i
+
+	arr_config_info.push(config_info_curr)
+
+	config_info = config_info_curr
+
+        hash_defines = Hash.new
+        arr_flags_overly_global = Array.new
+        config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
+	  compiler_info = V2C_Compiler_Info.new
+	  arr_flags_curr = compiler_info.arr_flags
+    	  arr_includes_curr = compiler_info.arr_includes
+	  $global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes_curr)
+
+	  $global_parser.read_compiler_preprocessor_definitions(compiler_xml, compiler_info.hash_defines)
+          if config_info.use_of_mfc == 2
+            compiler_info.hash_defines["_AFXEXT"] = ""
+	    compiler_info.hash_defines["_AFXDLL"] = ""
+          end
+	  hash_defines = compiler_info.hash_defines
+
+          attr_opts = compiler_xml.attributes["AdditionalOptions"]
+
+	  # Oh well, we might eventually want to provide a full-scale
+	  # translation of various compiler switches to their
+	  # counterparts on compilers of various platforms, but for
+	  # now, let's simply directly pass them on to the compiler when on
+	  # Win32 platform.
+	  if not attr_opts.nil?
+	     # I don't think we need this (we have per-target properties), thus we'll NOT write it!
+	     #local_generator.write_directory_property_compile_flags(attr_opts)
+
+	    # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
+	    # simply make reverse use of existing translation table in CMake source.
+	    arr_flags_curr = attr_opts.split(";")
+          end
+
+	  arr_flags_overly_global = arr_flags_curr
+
+	  config_info_curr.arr_compiler_info.push(compiler_info)
+        }
+
+        #if not arr_sub_sources.empty?
+        if $have_build_units
+	  # parse linker configuration...
+          config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
+	    linker_info = V2C_Linker_Info.new
+	    arr_dependencies_curr = linker_info.arr_dependencies
+	    $global_parser.read_linker_additional_dependencies(linker_xml, arr_dependencies_curr)
+	    arr_lib_dirs_curr = linker_info.arr_lib_dirs
+	    $global_parser.read_linker_additional_library_directories(linker_xml, arr_lib_dirs_curr)
+            $arr_dependencies_overly_global = arr_dependencies_curr
+	    $arr_lib_dirs_overly_global = arr_lib_dirs_curr
+	    # TODO: support AdditionalOptions! (mention via
+	    # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
+	    # depending on target type, and make sure to filter out options pre-defined by CMake platform
+	    # setup modules)
+	    config_info_curr.arr_linker_info.push(linker_info)
+          }
+	end
 
 	build_type_condition = ""
 	if config_multi_authoritative == config_info.name
@@ -1461,40 +1544,10 @@ File.open(tmpfile.path, "w") { |out|
 
 	$global_generator.put_cmake_mfc_atl_flag(config_info)
 
-        hash_defines = Hash.new
-        arr_flags = Array.new
-        config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
-    	  arr_includes = Array.new
-	  $global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes)
-
-	  local_generator.write_include_directories(arr_includes, parser_base.map_includes)
-
-	  $global_parser.read_compiler_preprocessor_definitions(compiler_xml, hash_defines)
-          if config_info.use_of_mfc == 2
-            hash_defines["_AFXEXT"] = ""
-	    hash_defines["_AFXDLL"] = ""
-          end
-
-          attr_opts = compiler_xml.attributes["AdditionalOptions"]
-
-	  # Oh well, we might eventually want to provide a full-scale
-	  # translation of various compiler switches to their
-	  # counterparts on compilers of various platforms, but for
-	  # now, let's simply directly pass them on to the compiler when on
-	  # Win32 platform.
-	  if not attr_opts.nil?
-	     local_generator.write_directory_property_compile_flags(attr_opts)
-
-	    # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
-	    # simply make reverse use of existing translation table in CMake source.
-	    # FIXME: Aww crap, that AdditionalOptions handling part here is actually a _duplicate_
-	    # of the part above, if not for the fact that it will end up as target- rather
-	    # than directory-related property. This needs to be resolved eventually,
-	    # but for now we'll just keep it like this until we have isolated parser/generator classes.
-	    # At least I now moved it into the same section which already handles the same thing above:
-	    arr_flags = attr_opts.split(";")
-          end
-        }
+	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+    	  arr_includes_curr = compiler_info_curr.arr_includes
+	  local_generator.write_include_directories(arr_includes_curr, parser_base.map_includes)
+	}
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
 	$global_generator.put_hook_post_definitions()
@@ -1508,23 +1561,10 @@ File.open(tmpfile.path, "w") { |out|
 
 	  $target_generator.put_sources(arr_sub_sources)
 
-	  # parse linker configuration...
-          arr_dependencies = Array.new
-	  arr_lib_dirs = Array.new
-          config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
-	    $global_parser.read_linker_additional_dependencies(linker_xml, arr_dependencies)
-
-	    $global_parser.read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
-	    # TODO: support AdditionalOptions! (mention via
-	    # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
-	    # depending on target type, and make sure to filter out options pre-defined by CMake platform
-	    # setup modules)
-          }
-
-          arr_lib_dirs.push("${V2C_LIB_DIRS}")
+          $arr_lib_dirs_overly_global.push("${V2C_LIB_DIRS}")
 
 	  # write link_directories() (BEFORE establishing a target!)
-	  local_generator.write_link_directories(arr_lib_dirs, map_lib_dirs)
+	  local_generator.write_link_directories($arr_lib_dirs_overly_global, map_lib_dirs)
 
 	  target_is_valid = false
 
@@ -1570,9 +1610,9 @@ File.open(tmpfile.path, "w") { |out|
 
 	  # write target_link_libraries() in case there's a valid target
           if target_is_valid
-            arr_dependencies.push("${V2C_LIBS}")
+            $arr_dependencies_overly_global.push("${V2C_LIBS}")
 
-	    $target_generator.write_link_libraries(arr_dependencies, map_dependencies)
+	    $target_generator.write_link_libraries($arr_dependencies_overly_global, map_dependencies)
           end # target_is_valid
         end # not arr_sub_sources.empty?
 
@@ -1588,7 +1628,7 @@ File.open(tmpfile.path, "w") { |out|
 	  syntax_generator.write_conditional_begin(str_conditional)
             $target_generator.write_property_compile_definitions(config_info.name, hash_defines, map_defines)
       	    # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-            $target_generator.write_property_compile_flags(config_info.name, arr_flags, "MSVC")
+            $target_generator.write_property_compile_flags(config_info.name, arr_flags_overly_global, "MSVC")
 	  syntax_generator.write_conditional_end(str_conditional)
         end
       } # [END per-config handling]
