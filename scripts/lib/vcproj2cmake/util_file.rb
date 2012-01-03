@@ -50,7 +50,11 @@ module V2C_Util_File
   module_function :makedirs
 
   def move(from, to, verbose = false)
-    return File.move(from, to, verbose)
+    # Side note: FileUtils on ruby 1.9.1p429 mingw32 does not have
+    # a move() alias, despite official Ruby 1.9.1 docs saying so.
+    # Hmm, or perhaps it failed due to 3-param invocation with an
+    # incompatible bool as 3rd param...
+    return $have_ftools ? File.move(from, to, verbose) : FileUtils.mv(from, to)
   end
   alias mv move
   module_function :mv
