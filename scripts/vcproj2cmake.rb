@@ -1328,8 +1328,6 @@ File.open(tmpfile.path, "w") { |out|
 
     $global_parser = V2C_VS7Parser.new
 
-    syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
-
     doc.elements.each("VisualStudioProject") { |project_xml|
 
       target = V2C_Target.new
@@ -1371,42 +1369,6 @@ File.open(tmpfile.path, "w") { |out|
       	vs7_parse_file_list(target.name, files_xml, main_files)
       }
 
-      # we likely shouldn't declare this, since for single-configuration
-      # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
-      ## configuration types need to be stated _before_ declaring the project()!
-      #syntax_generator.write_empty_line()
-      #$global_generator.put_configuration_types(configuration_types)
-
-      $global_generator.put_project(target.name)
-
-      ## sub projects will inherit, and we _don't_ want that...
-      # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
-      #puts_ind(out, "# reset project-local variables")
-      #puts_ind(out, "set( V2C_LIBS )")
-      #puts_ind(out, "set( V2C_SOURCES )")
-
-      $global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
-
-      $global_generator.put_hook_project()
-
-      # HACK: for now, have one global instance of the local generator
-      local_generator = V2C_CMakeLocalGenerator.new(out)
-
-      # HACK: for now, have one global instance of the target generator
-      $target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
-
-      arr_sub_sources = Array.new
-      $target_generator.put_file_list(target.name, main_files, nil, arr_sub_sources)
-
-      if not arr_sub_sources.empty?
-        # add a ${V2C_SOURCES} variable to the list, to be able to append
-        # all sorts of (auto-generated, ...) files to this list within
-        # hook includes, _right before_ creating the target with its sources.
-        arr_sub_sources.push("V2C_SOURCES")
-      else
-        log_warn "#{target.name}: no source files at all!? (header-based project?)"
-      end
-
       # ARGH, we have an issue with CMake not being fully up to speed with
       # multi-configuration generators (e.g. .vcproj):
       # it should be able to declare _all_ configuration-dependent settings
@@ -1438,10 +1400,6 @@ File.open(tmpfile.path, "w") { |out|
       read_mappings_combined($filename_map_dep, map_dependencies)
       map_defines = Hash.new
       read_mappings_combined($filename_map_def, map_defines)
-
-      $global_generator.put_include_project_source_dir()
-
-      $global_generator.put_hook_post_sources()
 
       # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
       # (or, in other words, different configs are capable of generating _different_ target _types_
@@ -1518,7 +1476,6 @@ File.open(tmpfile.path, "w") { |out|
 	    $global_parser.read_linker_additional_dependencies(linker_xml, arr_dependencies_curr)
 	    arr_lib_dirs_curr = linker_info_curr.arr_lib_dirs
 	    $global_parser.read_linker_additional_library_directories(linker_xml, arr_lib_dirs_curr)
-            $arr_dependencies_overly_global = arr_dependencies_curr
 	    # TODO: support AdditionalOptions! (mention via
 	    # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
 	    # depending on target type, and make sure to filter out options pre-defined by CMake platform
@@ -1527,6 +1484,48 @@ File.open(tmpfile.path, "w") { |out|
           }
 	end
       }
+
+      syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
+
+      # we likely shouldn't declare this, since for single-configuration
+      # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
+      ## configuration types need to be stated _before_ declaring the project()!
+      #syntax_generator.write_empty_line()
+      #$global_generator.put_configuration_types(configuration_types)
+
+      $global_generator.put_project(target.name)
+
+      ## sub projects will inherit, and we _don't_ want that...
+      # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
+      #puts_ind(out, "# reset project-local variables")
+      #puts_ind(out, "set( V2C_LIBS )")
+      #puts_ind(out, "set( V2C_SOURCES )")
+
+      $global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
+
+      $global_generator.put_hook_project()
+
+      # HACK: for now, have one global instance of the local generator
+      local_generator = V2C_CMakeLocalGenerator.new(out)
+
+      # HACK: for now, have one global instance of the target generator
+      $target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
+
+      arr_sub_sources = Array.new
+      $target_generator.put_file_list(target.name, main_files, nil, arr_sub_sources)
+
+      if not arr_sub_sources.empty?
+        # add a ${V2C_SOURCES} variable to the list, to be able to append
+        # all sorts of (auto-generated, ...) files to this list within
+        # hook includes, _right before_ creating the target with its sources.
+        arr_sub_sources.push("V2C_SOURCES")
+      else
+        log_warn "#{target.name}: no source files at all!? (header-based project?)"
+      end
+
+      $global_generator.put_include_project_source_dir()
+
+      $global_generator.put_hook_post_sources()
 
       arr_config_info.each { |config_info_curr|
 	build_type_condition = ""
@@ -1608,7 +1607,9 @@ File.open(tmpfile.path, "w") { |out|
 
 	  # write target_link_libraries() in case there's a valid target
           if target_is_valid
-	    $target_generator.write_link_libraries($arr_dependencies_overly_global, map_dependencies)
+	    config_info_curr.arr_linker_info.each { | linker_info_curr|
+	      $target_generator.write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
+	    }
           end # target_is_valid
         end # not arr_sub_sources.empty?
 
