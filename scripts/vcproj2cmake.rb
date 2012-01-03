@@ -152,7 +152,7 @@ $indent_step = 2
 # But at least let's optionally allow the user to precisely specify which configuration
 # (empty [first config], "Debug", "Release", ...) he wants to have
 # these settings taken from.
-config_multi_authoritative = ""
+$config_multi_authoritative = ""
 
 $filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
 $filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
@@ -175,8 +175,8 @@ $project_dir = p_vcproj.dirname
 
 script_location = File.expand_path(script_name)
 p_script = Pathname.new(script_location)
-script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
-#puts "p_script #{p_script} | p_master_proj #{p_master_proj} | script_location_relative_to_master #{script_location_relative_to_master}"
+$script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
+#puts "p_script #{p_script} | p_master_proj #{p_master_proj} | $script_location_relative_to_master #{$script_location_relative_to_master}"
 
 # monster HACK: set a global variable, since we need to be able
 # to tell whether we're able to build a target
@@ -413,7 +413,7 @@ class V2C_Target
   attr_accessor :scc_info
 end
 
-class V2C_BaseVCProjGlobalParser
+class V2C_BaseGlobalGenerator
   def initialize
     @filename_map_inc = "#{$v2c_config_dir_local}/include_mappings.txt"
     @map_includes = Hash.new
@@ -1308,6 +1308,181 @@ EOF
   return str
 end
 
+def generate_project(p_vcproj, out, target, main_files, arr_config_info)
+      target_is_valid = false
+
+      generator_base = V2C_BaseGlobalGenerator.new
+      map_lib_dirs = Hash.new
+      read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
+      map_dependencies = Hash.new
+      read_mappings_combined($filename_map_dep, map_dependencies)
+      map_defines = Hash.new
+      read_mappings_combined($filename_map_def, map_defines)
+
+      syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
+
+      # we likely shouldn't declare this, since for single-configuration
+      # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
+      ## configuration types need to be stated _before_ declaring the project()!
+      #syntax_generator.write_empty_line()
+      #$global_generator.put_configuration_types(configuration_types)
+
+      # HACK: for now, have one global instance of the local generator
+      local_generator = V2C_CMakeLocalGenerator.new(out)
+
+      # FIXME: these are all statements of the _project-local_ file,
+      # not any global ("solution") content!! --> move to local_generator.
+      $global_generator.put_project(target.name)
+
+      ## sub projects will inherit, and we _don't_ want that...
+      # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
+      #puts_ind(out, "# reset project-local variables")
+      #puts_ind(out, "set( V2C_LIBS )")
+      #puts_ind(out, "set( V2C_SOURCES )")
+
+      $global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
+
+      $global_generator.put_hook_project()
+
+      target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
+
+      arr_sub_sources = Array.new
+      target_generator.put_file_list(target.name, main_files, nil, arr_sub_sources)
+
+      if not arr_sub_sources.empty?
+        # add a ${V2C_SOURCES} variable to the list, to be able to append
+        # all sorts of (auto-generated, ...) files to this list within
+        # hook includes, _right before_ creating the target with its sources.
+        arr_sub_sources.push("V2C_SOURCES")
+      else
+        log_warn "#{target.name}: no source files at all!? (header-based project?)"
+      end
+
+      $global_generator.put_include_project_source_dir()
+
+      $global_generator.put_hook_post_sources()
+
+      arr_config_info.each { |config_info_curr|
+	build_type_condition = ""
+	if $config_multi_authoritative == config_info_curr.name
+	  build_type_condition = "CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
+	else
+	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
+	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
+	end
+
+	syntax_generator.write_empty_line()
+	syntax_generator.write_conditional_begin(build_type_condition)
+
+	$global_generator.put_cmake_mfc_atl_flag(config_info_curr)
+
+	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+	  local_generator.write_include_directories(compiler_info_curr.arr_includes, generator_base.map_includes)
+	}
+
+	# FIXME: hohumm, the position of this hook include is outdated, need to update it
+	$global_generator.put_hook_post_definitions()
+
+        # create a target only in case we do have any meat at all
+        #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
+        #if not arr_sub_sources.empty?
+        if $have_build_units
+
+          # first add source reference, then do linker setup, then create target
+
+	  target_generator.put_sources(arr_sub_sources)
+
+	  # write link_directories() (BEFORE establishing a target!)
+	  config_info_curr.arr_linker_info.each { | linker_info_curr|
+	    local_generator.write_link_directories(linker_info_curr.arr_lib_dirs, map_lib_dirs)
+	  }
+
+	  target_is_valid = false
+
+          # FIXME: should use a macro like rosbuild_add_executable(),
+          # http://www.ros.org/wiki/rosbuild/CMakeLists ,
+          # https://kermit.cse.wustl.edu/project/robotics/browser/trunk/vendor/ros/core/rosbuild/rosbuild.cmake?rev=3
+          # to be able to detect non-C++ file types within a source file list
+          # and add a hook to handle them specially.
+
+          # see VCProjectEngine ConfigurationTypes enumeration
+    	  case config_info_curr.type
+          when 1       # typeApplication (.exe)
+	    target_is_valid = true
+            #puts_ind(out, "add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
+            # TODO: perhaps for real cross-platform binaries (i.e.
+            # console apps not needing a WinMain()), we should detect
+            # this and not use WIN32 in this case...
+	    # Well, this probably is related to the .vcproj Keyword attribute ("Win32Proj", "MFCProj", "ATLProj", "MakeFileProj" etc.).
+	    target_generator.write_target_executable()
+          when 2    # typeDynamicLibrary (.dll)
+	    target_is_valid = true
+            #puts_ind(out, "add_library_vcproj2cmake( #{target.name} SHARED ${SOURCES} )")
+            # add_library() docs: "If no type is given explicitly the type is STATIC or  SHARED
+            #                      based on whether the current value of the variable
+            #                      BUILD_SHARED_LIBS is true."
+            # --> Thus we would like to leave it unspecified for typeDynamicLibrary,
+            #     and do specify STATIC for explicitly typeStaticLibrary targets.
+            # However, since then the global BUILD_SHARED_LIBS variable comes into play,
+            # this is a backwards-incompatible change, thus leave it for now.
+            # Or perhaps make use of new V2C_TARGET_LINKAGE_{SHARED|STATIC}_LIB
+            # variables here, to be able to define "SHARED"/"STATIC" externally?
+	    target_generator.write_target_library_dynamic()
+          when 4    # typeStaticLibrary
+	    target_is_valid = true
+	    target_generator.write_target_library_static()
+          when 0    # typeUnknown (utility)
+            log_warn "Project type 0 (typeUnknown - utility) is a _custom command_ type and thus probably cannot be supported easily. We will not abort and thus do write out a file, but it probably needs fixup (hook scripts?) to work properly. If this project type happens to use VCNMakeTool tool, then I would suggest to examine BuildCommandLine/ReBuildCommandLine/CleanCommandLine attributes for clues on how to proceed."
+	  else
+          #when 10    # typeGeneric (Makefile) [and possibly other things...]
+            # TODO: we _should_ somehow support these project types...
+            log_fatal "Project type #{config_info_curr.type} not supported."
+          end
+
+	  # write target_link_libraries() in case there's a valid target
+          if target_is_valid
+	    config_info_curr.arr_linker_info.each { | linker_info_curr|
+	      target_generator.write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
+	    }
+          end # target_is_valid
+        end # not arr_sub_sources.empty?
+
+	$global_generator.put_hook_post_target()
+
+	syntax_generator.write_conditional_end(build_type_condition)
+
+        # NOTE: the commands below can stay in the general section (outside of
+        # build_type_condition above), but only since they define properties
+        # which are clearly named as being configuration-_specific_ already!
+        if target_is_valid
+	  str_conditional = "TARGET #{target.name}"
+	  syntax_generator.write_conditional_begin(str_conditional)
+	    # I don't know WhyTH we're iterating over a compiler_info here,
+	    # but let's just do it like that for now since it's required
+	    # by our current data model:
+	    config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+              target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
+      	      # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
+              target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, "MSVC")
+	    }
+	  syntax_generator.write_conditional_end(str_conditional)
+        end
+      } # [END per-config handling]
+
+      if target_is_valid
+	target_generator.set_properties_vs_scc(target.scc_info)
+
+        # TODO: might want to set a target's FOLDER property, too...
+        # (and perhaps a .vcproj has a corresponding attribute
+        # which indicates that?)
+
+        # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
+      end # target_is_valid
+
+      $global_generator.put_var_converter_script_location($script_location_relative_to_master)
+      local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, p_vcproj.basename)
+end
+
 ################
 #     MAIN     #
 ################
@@ -1322,8 +1497,6 @@ File.open(tmpfile.path, "w") { |out|
   $global_generator.put_file_header()
 
   File.open(vcproj_filename) { |io|
-    parser_base = V2C_BaseVCProjGlobalParser.new
-
     doc = REXML::Document.new io
 
     $global_parser = V2C_VS7Parser.new
@@ -1336,7 +1509,7 @@ File.open(tmpfile.path, "w") { |out|
       target.vs_keyword = project_xml.attributes["Keyword"]
 
       # we can handle the following target stuff outside per-config handling (reason: see comment above)
-      scc_info = V2C_SCC_Info.new
+      scc_info = target.scc_info
       if not project_xml.attributes["SccProjectName"].nil?
         scc_info.project_name = project_xml.attributes["SccProjectName"].clone
         # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
@@ -1387,19 +1560,12 @@ File.open(tmpfile.path, "w") { |out|
       # Well, in that case we should simply resort to generating
       # the _union_ of all include directories of all configurations...
 
-      if config_multi_authoritative.empty?
+      if $config_multi_authoritative.empty?
 	project_configuration_first_xml = project_xml.elements["Configurations/Configuration"].next_element
 	if not project_configuration_first_xml.nil?
-          config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
+          $config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
 	end
       end
-
-      map_lib_dirs = Hash.new
-      read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
-      map_dependencies = Hash.new
-      read_mappings_combined($filename_map_dep, map_dependencies)
-      map_defines = Hash.new
-      read_mappings_combined($filename_map_def, map_defines)
 
       # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
       # (or, in other words, different configs are capable of generating _different_ target _types_
@@ -1409,7 +1575,6 @@ File.open(tmpfile.path, "w") { |out|
       # since other .vcproj file contents always link to our target via the main project name only!!).
       # Thus we need to declare the target variable _outside_ the scope of per-config handling :(
 
-      target_is_valid = false
       arr_config_info = Array.new
       project_xml.elements.each("Configurations/Configuration") { |config_xml|
 	config_info_curr = V2C_Config_Info.new
@@ -1485,168 +1650,7 @@ File.open(tmpfile.path, "w") { |out|
 	end
       }
 
-      syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
-
-      # we likely shouldn't declare this, since for single-configuration
-      # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
-      ## configuration types need to be stated _before_ declaring the project()!
-      #syntax_generator.write_empty_line()
-      #$global_generator.put_configuration_types(configuration_types)
-
-      $global_generator.put_project(target.name)
-
-      ## sub projects will inherit, and we _don't_ want that...
-      # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
-      #puts_ind(out, "# reset project-local variables")
-      #puts_ind(out, "set( V2C_LIBS )")
-      #puts_ind(out, "set( V2C_SOURCES )")
-
-      $global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
-
-      $global_generator.put_hook_project()
-
-      # HACK: for now, have one global instance of the local generator
-      local_generator = V2C_CMakeLocalGenerator.new(out)
-
-      # HACK: for now, have one global instance of the target generator
-      $target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
-
-      arr_sub_sources = Array.new
-      $target_generator.put_file_list(target.name, main_files, nil, arr_sub_sources)
-
-      if not arr_sub_sources.empty?
-        # add a ${V2C_SOURCES} variable to the list, to be able to append
-        # all sorts of (auto-generated, ...) files to this list within
-        # hook includes, _right before_ creating the target with its sources.
-        arr_sub_sources.push("V2C_SOURCES")
-      else
-        log_warn "#{target.name}: no source files at all!? (header-based project?)"
-      end
-
-      $global_generator.put_include_project_source_dir()
-
-      $global_generator.put_hook_post_sources()
-
-      arr_config_info.each { |config_info_curr|
-	build_type_condition = ""
-	if config_multi_authoritative == config_info_curr.name
-	  build_type_condition = "CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
-	else
-	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
-	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
-	end
-
-	syntax_generator.write_empty_line()
-	syntax_generator.write_conditional_begin(build_type_condition)
-
-	$global_generator.put_cmake_mfc_atl_flag(config_info_curr)
-
-	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-    	  arr_includes_curr = compiler_info_curr.arr_includes
-	  local_generator.write_include_directories(arr_includes_curr, parser_base.map_includes)
-	}
-
-	# FIXME: hohumm, the position of this hook include is outdated, need to update it
-	$global_generator.put_hook_post_definitions()
-
-        # create a target only in case we do have any meat at all
-        #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
-        #if not arr_sub_sources.empty?
-        if $have_build_units
-
-          # first add source reference, then do linker setup, then create target
-
-	  $target_generator.put_sources(arr_sub_sources)
-
-	  # write link_directories() (BEFORE establishing a target!)
-	  config_info_curr.arr_linker_info.each { | linker_info_curr|
-	    local_generator.write_link_directories(linker_info_curr.arr_lib_dirs, map_lib_dirs)
-	  }
-
-	  target_is_valid = false
-
-          # FIXME: should use a macro like rosbuild_add_executable(),
-          # http://www.ros.org/wiki/rosbuild/CMakeLists ,
-          # https://kermit.cse.wustl.edu/project/robotics/browser/trunk/vendor/ros/core/rosbuild/rosbuild.cmake?rev=3
-          # to be able to detect non-C++ file types within a source file list
-          # and add a hook to handle them specially.
-
-          # see VCProjectEngine ConfigurationTypes enumeration
-    	  case config_info_curr.type
-          when 1       # typeApplication (.exe)
-	    target_is_valid = true
-            #puts_ind(out, "add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
-            # TODO: perhaps for real cross-platform binaries (i.e.
-            # console apps not needing a WinMain()), we should detect
-            # this and not use WIN32 in this case...
-	    # Well, this probably is related to the .vcproj Keyword attribute ("Win32Proj", "MFCProj", "ATLProj", "MakeFileProj" etc.).
-	    $target_generator.write_target_executable()
-          when 2    # typeDynamicLibrary (.dll)
-	    target_is_valid = true
-            #puts_ind(out, "add_library_vcproj2cmake( #{target.name} SHARED ${SOURCES} )")
-            # add_library() docs: "If no type is given explicitly the type is STATIC or  SHARED
-            #                      based on whether the current value of the variable
-            #                      BUILD_SHARED_LIBS is true."
-            # --> Thus we would like to leave it unspecified for typeDynamicLibrary,
-            #     and do specify STATIC for explicitly typeStaticLibrary targets.
-            # However, since then the global BUILD_SHARED_LIBS variable comes into play,
-            # this is a backwards-incompatible change, thus leave it for now.
-            # Or perhaps make use of new V2C_TARGET_LINKAGE_{SHARED|STATIC}_LIB
-            # variables here, to be able to define "SHARED"/"STATIC" externally?
-	    $target_generator.write_target_library_dynamic()
-          when 4    # typeStaticLibrary
-	    target_is_valid = true
-	    $target_generator.write_target_library_static()
-          when 0    # typeUnknown (utility)
-            log_warn "Project type 0 (typeUnknown - utility) is a _custom command_ type and thus probably cannot be supported easily. We will not abort and thus do write out a file, but it probably needs fixup (hook scripts?) to work properly. If this project type happens to use VCNMakeTool tool, then I would suggest to examine BuildCommandLine/ReBuildCommandLine/CleanCommandLine attributes for clues on how to proceed."
-	  else
-          #when 10    # typeGeneric (Makefile) [and possibly other things...]
-            # TODO: we _should_ somehow support these project types...
-            log_fatal "Project type #{config_info_curr.type} not supported."
-          end
-
-	  # write target_link_libraries() in case there's a valid target
-          if target_is_valid
-	    config_info_curr.arr_linker_info.each { | linker_info_curr|
-	      $target_generator.write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
-	    }
-          end # target_is_valid
-        end # not arr_sub_sources.empty?
-
-	$global_generator.put_hook_post_target()
-
-	syntax_generator.write_conditional_end(build_type_condition)
-
-        # NOTE: the commands below can stay in the general section (outside of
-        # build_type_condition above), but only since they define properties
-        # which are clearly named as being configuration-_specific_ already!
-        if target_is_valid
-	  str_conditional = "TARGET #{target.name}"
-	  syntax_generator.write_conditional_begin(str_conditional)
-	    # I don't know WhyTH we're iterating over a compiler_info here,
-	    # but let's just do it like that for now since it's required
-	    # by our current data model:
-	    config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-              $target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
-      	      # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-              $target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, "MSVC")
-	    }
-	  syntax_generator.write_conditional_end(str_conditional)
-        end
-      } # [END per-config handling]
-
-      if target_is_valid
-	$target_generator.set_properties_vs_scc(scc_info)
-
-        # TODO: might want to set a target's FOLDER property, too...
-        # (and perhaps a .vcproj has a corresponding attribute
-        # which indicates that?)
-
-        # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
-      end # target_is_valid
-
-      $global_generator.put_var_converter_script_location(script_location_relative_to_master)
-      local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, p_vcproj.basename)
+      generate_project(p_vcproj, out, target, main_files, arr_config_info)
     }
   }
   # Close file, since Fileutils.mv on an open file will barf on XP
