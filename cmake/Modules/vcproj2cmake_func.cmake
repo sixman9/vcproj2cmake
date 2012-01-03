@@ -41,6 +41,18 @@ set(v2c_stamp_files_dir "${CMAKE_BINARY_DIR}/${v2c_global_config_subdir_my}/${V2
 file(MAKE_DIRECTORY "${v2c_stamp_files_dir}")
 
 
+# Debug-only helper!
+function(v2c_target_log_configuration _target)
+  if(TARGET ${_target})
+    get_property(vs_scc_projectname_ TARGET ${_target} PROPERTY VS_SCC_PROJECTNAME)
+    get_property(vs_scc_localpath_ TARGET ${_target} PROPERTY VS_SCC_LOCALPATH)
+    get_property(vs_scc_provider_ TARGET ${_target} PROPERTY VS_SCC_PROVIDER)
+    get_property(vs_scc_auxpath_ TARGET ${_target} PROPERTY VS_SCC_AUXPATH)
+    message(FATAL_ERROR "Properties/settings target ${_target}:\n\tvs_scc_projectname_ ${vs_scc_projectname_}\n\tvs_scc_localpath_ ${vs_scc_localpath_}\n\tvs_scc_provider_ ${vs_scc_provider_}\n\tvs_scc_auxpath_ ${vs_scc_auxpath_}")
+  endif(TARGET ${_target})
+endfunction(v2c_target_log_configuration _target)
+
+
 if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
   # Some one-time setup steps:
 
@@ -271,18 +283,23 @@ function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_lo
   #  "VS_SCC_PROJECTNAME ${_vs_scc_projectname} VS_SCC_LOCALPATH ${_vs_scc_localpath}\n"
   #  "VS_SCC_PROVIDER ${_vs_scc_provider}"
   #)
+  # WARNING NOTE: the previous implementation called set_target_properties()
+  # with a strung-together list of properties, as an optimization.
+  # However since certain input property string payload consisted of semicolons
+  # (e.g. in the case of "&quot;"), this went completely haywire
+  # with contents partially split off at semicolon borders. 
+  # IOW, definitely make sure to set each property precisely separately.
   if(_vs_scc_projectname)
-    list(APPEND target_properties_list_ VS_SCC_PROJECTNAME "${_vs_scc_projectname}")
+    set_property(TARGET ${_target} PROPERTY VS_SCC_PROJECTNAME "${_vs_scc_projectname}")
     if(_vs_scc_localpath)
-      list(APPEND target_properties_list_ VS_SCC_LOCALPATH "${_vs_scc_localpath}")
+      set_property(TARGET ${_target} PROPERTY VS_SCC_LOCALPATH "${_vs_scc_localpath}")
     endif(_vs_scc_localpath)
     if(_vs_scc_provider)
-      list(APPEND target_properties_list_ VS_SCC_PROVIDER "${_vs_scc_provider}")
+      set_property(TARGET ${_target} PROPERTY VS_SCC_PROVIDER "${_vs_scc_provider}")
     endif(_vs_scc_provider)
     if(_vs_scc_auxpath)
-      list(APPEND target_properties_list_ VS_SCC_AUXPATH "${_vs_scc_auxpath}")
+      set_property(TARGET ${_target} PROPERTY VS_SCC_AUXPATH "${_vs_scc_auxpath}")
     endif(_vs_scc_auxpath)
-    set_target_properties(${_target} PROPERTIES ${target_properties_list_})
   endif(_vs_scc_projectname)
 endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider _vs_scc_auxpath)
 
@@ -447,6 +464,9 @@ function(v2c_post_setup _target _project_label _vs_keyword _vcproj_file _cmake_c
       set_property(TARGET ${_target} PROPERTY VS_KEYWORD "${_vs_keyword}")
     endif(NOT _vs_keyword STREQUAL V2C_NOT_PROVIDED)
   endif(TARGET ${_target})
+  # DEBUG/LOG helper - enable to verify correct transfer of target properties etc.:
+  #v2c_target_log_configuration(${_target})
+
   # Implementation note: the last argument to
   # v2c_rebuild_on_update() should be as much of a 1:1 passthrough of
   # the input argument to the CMakeLists.txt converter ruby script execution as possible/suitable,
