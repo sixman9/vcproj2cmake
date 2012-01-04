@@ -532,18 +532,24 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     write_new_line("project(#{project_name})")
   end
   def put_cmake_mfc_atl_flag(config_info)
-    # FIXME: do we need to actively _reset_ CMAKE_MFC_FLAG / CMAKE_ATL_FLAG
-    # (i.e. best also set() it in case of 0?), since projects in subdirs shouldn't inherit?
+    # Hmm, do we need to actively _reset_ CMAKE_MFC_FLAG / CMAKE_ATL_FLAG
+    # (i.e. _unconditionally_ set() it, even if it's 0),
+    # since projects in subdirs shouldn't inherit?
+    # Given the discussion at
+    # "[CMake] CMAKE_MFC_FLAG is inherited in subdirectory ?"
+    #   http://www.cmake.org/pipermail/cmake/2009-February/026896.html
+    # I'd strongly assume yes...
 
-    if config_info.use_of_mfc > 0
+    #if config_info.use_of_mfc > 0
       write_new_line("set(CMAKE_MFC_FLAG #{config_info.use_of_mfc})")
-    end
+    #end
     # ok, there's no CMAKE_ATL_FLAG yet, AFAIK, but still prepare
     # for it (also to let people probe on this in hook includes)
-    if config_info.use_of_atl > 0
+    #if config_info.use_of_atl > 0
       # TODO: should also set the per-configuration-type variable variant
-      write_new_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
-    end
+      #write_new_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
+      write_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
+    #end
   end
   def put_hook_pre
     # this CMakeLists.txt-global optional include could be used e.g.
