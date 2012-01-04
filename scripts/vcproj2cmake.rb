@@ -732,7 +732,9 @@ def cmake_element_handle_quoting(elem)
   # to get it all precisely correct.
   needs_quoting = false
   has_quotes = false
-  if elem.match(/[[:alnum:]]\s|\s[[:alnum:]]/)
+  # "contains at least one whitespace character,
+  # and then prefixed or followed by any non-whitespace char value"
+  if elem.match(/[^\s]\s|\s[^\s]/)
     needs_quoting = true
   end
   if elem.match(/".*"/)
