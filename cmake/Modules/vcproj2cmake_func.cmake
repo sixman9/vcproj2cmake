@@ -278,6 +278,15 @@ endif(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
 # This function will set up target properties gathered from
 # Visual Studio Source Control Management (SCM) elements.
 function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider _vs_scc_auxpath)
+  # Since I was unable to make it work with some more experimentation
+  # (on VS2005), we better disable it cleanly for now, since otherwise VS
+  # will resort to awfully annoying nagging.
+  # I slightly suspect that even CMake itself is not up to the task,
+  # since a .sln usually contains Scc* tags, which the CMake generator does not provide.
+  # Or perhaps VS_SCC_LOCALPATH does not reference the source directory properly (in case of original "." statement this should probably be corrected to point to the project source and not to the possibly referenced project _binary_ dir).
+  # The way to go about it is to use generated solutions and try to fix _that_ up within VS until it's actually properly registered. But when trying to do so I had problems with project import always referencing the source root dir (TODO investigate more).
+  message("project ${_target} found to contain VS SCC configuration properties, but VS integration does not seem to work yet - disabled! (FIXME)")
+  return()
   #message(STATUS
   #  "v2c_target_set_properties_vs_scc: target ${_target}"
   #  "VS_SCC_PROJECTNAME ${_vs_scc_projectname} VS_SCC_LOCALPATH ${_vs_scc_localpath}\n"
@@ -289,16 +298,24 @@ function(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_lo
   # (e.g. in the case of "&quot;"), this went completely haywire
   # with contents partially split off at semicolon borders. 
   # IOW, definitely make sure to set each property precisely separately.
+  # Well, that's not sufficient! The remaining problem was that the property
+  # variables SHOULD NOT BE QUOTED, to enable passing of the content as a list,
+  # thereby implicitly properly passing the original ';' content right to
+  # the generated .vcproj, in fully correct form!
+  # Perhaps the previous set_target_properties() code was actually doable after all... (TODO test?)
   if(_vs_scc_projectname)
-    set_property(TARGET ${_target} PROPERTY VS_SCC_PROJECTNAME "${_vs_scc_projectname}")
+    set_property(TARGET ${_target} PROPERTY VS_SCC_PROJECTNAME ${_vs_scc_projectname})
     if(_vs_scc_localpath)
-      set_property(TARGET ${_target} PROPERTY VS_SCC_LOCALPATH "${_vs_scc_localpath}")
+      #if("${_vs_scc_localpath}" STREQUAL ".")
+      #      set(_vs_scc_localpath "SAK")
+      #endif("${_vs_scc_localpath}" STREQUAL ".")
+      set_property(TARGET ${_target} PROPERTY VS_SCC_LOCALPATH ${_vs_scc_localpath})
     endif(_vs_scc_localpath)
     if(_vs_scc_provider)
-      set_property(TARGET ${_target} PROPERTY VS_SCC_PROVIDER "${_vs_scc_provider}")
+      set_property(TARGET ${_target} PROPERTY VS_SCC_PROVIDER ${_vs_scc_provider})
     endif(_vs_scc_provider)
     if(_vs_scc_auxpath)
-      set_property(TARGET ${_target} PROPERTY VS_SCC_AUXPATH "${_vs_scc_auxpath}")
+      set_property(TARGET ${_target} PROPERTY VS_SCC_AUXPATH ${_vs_scc_auxpath})
     endif(_vs_scc_auxpath)
   endif(_vs_scc_projectname)
 endfunction(v2c_target_set_properties_vs_scc _target _vs_scc_projectname _vs_scc_localpath _vs_scc_provider _vs_scc_auxpath)
