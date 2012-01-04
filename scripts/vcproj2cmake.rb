@@ -730,18 +730,24 @@ def cmake_element_handle_quoting(elem)
   # whitespace or the other way around.
   # Quoting rules seem terribly confusing, will need to revisit things
   # to get it all precisely correct.
-  if elem.match(/[:alnum:]\s|\s[:alnum:]/)
-    needs_quoting = 1
+  needs_quoting = false
+  has_quotes = false
+  if elem.match(/[[:alnum:]]\s|\s[[:alnum:]]/)
+    needs_quoting = true
   end
   if elem.match(/".*"/)
-    has_quotes = 1
+    has_quotes = true
   end
+  #puts "QUOTING: elem #{elem} needs_quoting #{needs_quoting} has_quotes #{has_quotes}"
   if needs_quoting and not has_quotes
+    #puts "QUOTING: do quote!"
     return "\"#{elem}\""
   end
   if not needs_quoting and has_quotes
+    #puts "QUOTING: do UNquoting!"
     return elem.gsub(/"(.*)"/, '\1')
   end
+    #puts "QUOTING: do no changes!"
   return elem
 end
 
