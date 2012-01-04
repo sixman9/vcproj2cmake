@@ -67,13 +67,16 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     add_custom_target(update_cmakelists_ALL)
   endif(NOT TARGET update_cmakelists_ALL)
 
-  if(NOT v2c_ruby_BIN) # avoid repeated checks (see cmake --trace)
-    find_program(v2c_ruby_BIN NAMES ruby)
-    if(NOT v2c_ruby_BIN)
+  # Prefer _upper-case_ V2C prefix for _cache variables_ such as V2C_RUBY_BIN,
+  # to ensure that they're all sorted under
+  # The One True upper-case "V2C" prefix in "grouped view" mode of CMake GUI.
+  if(NOT V2C_RUBY_BIN) # avoid repeated checks (see cmake --trace)
+    find_program(V2C_RUBY_BIN NAMES ruby)
+    if(NOT V2C_RUBY_BIN)
       message("could not detect your ruby installation (perhaps forgot to set CMAKE_PREFIX_PATH?), aborting: won't automagically rebuild CMakeLists.txt on changes...")
       return()
-    endif(NOT v2c_ruby_BIN)
-  endif(NOT v2c_ruby_BIN)
+    endif(NOT V2C_RUBY_BIN)
+  endif(NOT V2C_RUBY_BIN)
 
   set(v2c_cmakelists_update_check_stamp_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_check_done.stamp")
 
@@ -108,7 +111,7 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     message(STATUS "Providing fully recursive CMakeLists.txt rebuilder target ${v2c_cmakelists_target_rebuild_all_name}, to forcibly enact a recursive .vcproj --> CMake reconversion of all source tree sub directories.")
     set(cmakelists_update_recursively_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_recursive_converter_done.stamp")
     add_custom_target(${v2c_cmakelists_target_rebuild_all_name}
-      COMMAND "${v2c_ruby_BIN}" "${script_recursive_}"
+      COMMAND "${V2C_RUBY_BIN}" "${script_recursive_}"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       DEPENDS "${v2c_project_exclude_list_file_location}"
       COMMENT "Doing recursive .vcproj --> CMakeLists.txt conversion in all source root sub directories."
@@ -161,7 +164,7 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     if(EXISTS "${script_settings_}")
       list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${script_settings_}")
     endif(EXISTS "${script_settings_}")
-    list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${v2c_ruby_BIN}")
+    list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${V2C_RUBY_BIN}")
     # TODO add any other relevant dependencies here
 
     # Need an intermediate stamp file, otherwise "make clean" will clean
@@ -169,7 +172,7 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     # since it hosts this very CMakeLists.txt rebuilder mechanism...
     set(cmakelists_update_this_proj_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_rebuilder_done.stamp")
     add_custom_command(OUTPUT "${cmakelists_update_this_proj_updated_stamp_file_}"
-      COMMAND "${v2c_ruby_BIN}" "${_script}" "${_vcproj_file}" "${_cmakelists_file}" "${_master_proj_dir}"
+      COMMAND "${V2C_RUBY_BIN}" "${_script}" "${_vcproj_file}" "${_cmakelists_file}" "${_master_proj_dir}"
       COMMAND "${CMAKE_COMMAND}" -E remove -f "${v2c_cmakelists_update_check_stamp_file}"
       COMMAND "${CMAKE_COMMAND}" -E touch "${cmakelists_update_this_proj_updated_stamp_file_}"
       DEPENDS ${v2c_cmakelists_rebuilder_deps_list_}
