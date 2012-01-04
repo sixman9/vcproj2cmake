@@ -1346,7 +1346,7 @@ EOF
   return str
 end
 
-def generate_project(p_vcproj, out, target, main_files, arr_config_info)
+def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
       target_is_valid = false
 
       generator_base = V2C_BaseGlobalGenerator.new
@@ -1363,14 +1363,17 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
       # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
       ## configuration types need to be stated _before_ declaring the project()!
       #syntax_generator.write_empty_line()
-      #$global_generator.put_configuration_types(configuration_types)
+      #global_generator.put_configuration_types(configuration_types)
 
-      # HACK: for now, have one global instance of the local generator
       local_generator = V2C_CMakeLocalGenerator.new(out)
+
+      global_generator = V2C_CMakeGlobalGenerator.new(out)
+
+      global_generator.put_file_header()
 
       # FIXME: these are all statements of the _project-local_ file,
       # not any global ("solution") content!! --> move to local_generator.
-      $global_generator.put_project(target.name)
+      global_generator.put_project(target.name)
 
       ## sub projects will inherit, and we _don't_ want that...
       # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
@@ -1378,9 +1381,9 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
       #puts_ind(out, "set( V2C_LIBS )")
       #puts_ind(out, "set( V2C_SOURCES )")
 
-      $global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
+      global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
 
-      $global_generator.put_hook_project()
+      global_generator.put_hook_project()
 
       target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
 
@@ -1398,9 +1401,9 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
         log_warn "#{target.name}: no source files at all!? (header-based project?)"
       end
 
-      $global_generator.put_include_project_source_dir()
+      global_generator.put_include_project_source_dir()
 
-      $global_generator.put_hook_post_sources()
+      global_generator.put_hook_post_sources()
 
       arr_config_info.each { |config_info_curr|
 	build_type_condition = ""
@@ -1419,14 +1422,14 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
 	syntax_generator.write_empty_line()
 	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
 
-	$global_generator.put_cmake_mfc_atl_flag(config_info_curr)
+	global_generator.put_cmake_mfc_atl_flag(config_info_curr)
 
 	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
 	  local_generator.write_include_directories(compiler_info_curr.arr_includes, generator_base.map_includes)
 	}
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
-	$global_generator.put_hook_post_definitions()
+	global_generator.put_hook_post_definitions()
 
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
@@ -1495,7 +1498,7 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
           end # target_is_valid
         end # not arr_sub_sources.empty?
 
-	$global_generator.put_hook_post_target()
+	global_generator.put_hook_post_target()
 
 	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
       } # [END per-config handling]
@@ -1535,7 +1538,7 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # target_is_valid
 
-      $global_generator.put_var_converter_script_location($script_location_relative_to_master)
+      global_generator.put_var_converter_script_location($script_location_relative_to_master)
       local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, p_vcproj.basename)
 end
 
@@ -1547,10 +1550,6 @@ end
 tmpfile = Tempfile.new('vcproj2cmake')
 
 File.open(tmpfile.path, "w") { |out|
-
-  $global_generator = V2C_CMakeGlobalGenerator.new(out)
-
-  $global_generator.put_file_header()
 
   File.open(vcproj_filename) { |io|
     doc = REXML::Document.new io
@@ -1701,7 +1700,7 @@ File.open(tmpfile.path, "w") { |out|
 	arr_config_info.push(config_info_curr)
       }
 
-      generate_project(p_vcproj, out, target, main_files, arr_config_info)
+      project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
     }
   }
   # Close file, since Fileutils.mv on an open file will barf on XP
