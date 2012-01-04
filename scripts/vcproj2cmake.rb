@@ -474,9 +474,16 @@ class V2C_CMakeSyntaxGenerator
   end
 
   # WIN32, MSVC, ...
-  def write_conditional_begin(str_conditional)
+  def write_conditional_if(str_conditional)
     if not str_conditional.nil?
       write_line("if(#{str_conditional})")
+      cmake_indent_more()
+    end
+  end
+  def write_conditional_else(str_conditional)
+    if not str_conditional.nil?
+      cmake_indent_less()
+      write_line("else(#{str_conditional})")
       cmake_indent_more()
     end
   end
@@ -486,6 +493,20 @@ class V2C_CMakeSyntaxGenerator
       write_line("endif(#{str_conditional})")
     end
   end
+  def get_keyword_bool(setting)
+    return setting ? "true" : "false"
+  end
+  def write_var_bool(var_name, setting)
+    str_setting = get_keyword_bool(setting)
+    write_line("set(#{var_name} #{str_setting})")
+  end
+  def write_var_bool_conditional(var_name, str_condition)
+    write_conditional_if(str_condition)
+      write_var_bool(var_name, true)
+    write_conditional_else(str_condition)
+      write_var_bool(var_name, false)
+    write_conditional_end(str_condition)
+  end
   def write_vcproj2cmake_func_comment()
     write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{$vcproj2cmake_func_cmake}")
   end
@@ -493,7 +514,7 @@ class V2C_CMakeSyntaxGenerator
     str_policy = "%s%04d" % [ "CMP", policy_num ]
     str_conditional = "POLICY #{str_policy}"
     str_OLD_NEW = set_to_new ? "NEW" : "OLD"
-    write_conditional_begin(str_conditional)
+    write_conditional_if(str_conditional)
       if not comment.nil?
         write_comment_at_level(3, comment)
       end
@@ -583,7 +604,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
       "user override mechanism (allow defining custom location of script)" \
     )
     str_conditional = "NOT V2C_SCRIPT_LOCATION"
-    write_conditional_begin(str_conditional)
+    write_conditional_if(str_conditional)
       # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
       # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
       # (this provision should even enable people to manually relocate
@@ -646,7 +667,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_file_header_cmake_policies
     str_conditional = "COMMAND cmake_policy"
-    write_conditional_begin(str_conditional)
+    write_conditional_if(str_conditional)
       # CMP0005: manual quoting of brackets in definitions doesn't seem to work otherwise,
       # in cmake 2.6.4-7.el5 with "OLD".
       write_cmake_policy(5, true, "automatic quoting of brackets")
@@ -764,7 +785,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # be settings for ANY PARTICULAR tool that is configured
     # on the Win32 side (.vcproj in general).
     str_platform = "WIN32"
-    write_conditional_begin(str_platform)
+    write_conditional_if(str_platform)
       write_line("set_property(DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{attr_opts})")
     write_conditional_end(str_platform)
   end
@@ -779,7 +800,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       arr_platdefs.uniq!
       write_empty_line()
       str_platform = key if not key.eql?("ALL")
-      write_conditional_begin(str_platform)
+      write_conditional_if(str_platform)
         if cmake_command_arg.nil?
           cmake_command_arg = ""
         end
@@ -915,7 +936,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_new_line("add_library(#{@target.name} STATIC ${SOURCES})")
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
-      write_conditional_begin(str_platform)
+      write_conditional_if(str_platform)
         # make sure to specify APPEND for greater flexibility (hooks etc.)
         write_line("set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper}")
         cmake_indent_more()
@@ -963,7 +984,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     return if arr_flags.empty?
     config_name_upper = get_config_name_upcase(config_name)
     write_empty_line()
-    write_conditional_begin(str_conditional)
+    write_conditional_if(str_conditional)
       write_line("set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}")
       cmake_indent_more()
         arr_flags.each do |compile_flag|
@@ -1352,7 +1373,9 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
       if not arr_sub_sources.empty?
         # add a ${V2C_SOURCES} variable to the list, to be able to append
         # all sorts of (auto-generated, ...) files to this list within
-        # hook includes, _right before_ creating the target with its sources.
+        # hook includes.
+	# - _right before_ creating the target with its sources
+	# - and not earlier since earlier .vcproj-defined variables should be clean (not be made to contain V2C_SOURCES contents yet)
         arr_sub_sources.push("V2C_SOURCES")
       else
         log_warn "#{target.name}: no source files at all!? (header-based project?)"
@@ -1370,9 +1393,14 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
 	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
 	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
 	end
+	var_v2c_want_buildcfg_curr = "v2c_want_buildcfg_#{config_info_curr.name}"
+	syntax_generator.write_var_bool_conditional(var_v2c_want_buildcfg_curr, build_type_condition)
+      }
 
+      arr_config_info.each { |config_info_curr|
+	var_v2c_want_buildcfg_curr = "v2c_want_buildcfg_#{config_info_curr.name}"
 	syntax_generator.write_empty_line()
-	syntax_generator.write_conditional_begin(build_type_condition)
+	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
 
 	$global_generator.put_cmake_mfc_atl_flag(config_info_curr)
 
@@ -1399,6 +1427,8 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
 
 	  target_is_valid = false
 
+	  str_condition_no_target = "NOT TARGET #{target.name}"
+	  syntax_generator.write_conditional_if(str_condition_no_target)
           # FIXME: should use a macro like rosbuild_add_executable(),
           # http://www.ros.org/wiki/rosbuild/CMakeLists ,
           # https://kermit.cse.wustl.edu/project/robotics/browser/trunk/vendor/ros/core/rosbuild/rosbuild.cmake?rev=3
@@ -1438,6 +1468,7 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
             # TODO: we _should_ somehow support these project types...
             log_fatal "Project type #{config_info_curr.type} not supported."
           end
+	  syntax_generator.write_conditional_end(str_condition_no_target)
 
 	  # write target_link_libraries() in case there's a valid target
           if target_is_valid
@@ -1449,14 +1480,14 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
 
 	$global_generator.put_hook_post_target()
 
-	syntax_generator.write_conditional_end(build_type_condition)
+	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
 
         # NOTE: the commands below can stay in the general section (outside of
-        # build_type_condition above), but only since they define properties
+        # var_v2c_want_buildcfg_curr above), but only since they define properties
         # which are clearly named as being configuration-_specific_ already!
         if target_is_valid
 	  str_conditional = "TARGET #{target.name}"
-	  syntax_generator.write_conditional_begin(str_conditional)
+	  syntax_generator.write_conditional_if(str_conditional)
 	    # I don't know WhyTH we're iterating over a compiler_info here,
 	    # but let's just do it like that for now since it's required
 	    # by our current data model:
