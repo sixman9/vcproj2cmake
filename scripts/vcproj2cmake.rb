@@ -1721,7 +1721,10 @@ end
 
 if configuration_changed
   if have_old_file
-    # move away old file
+    # Move away old file.
+    # Usability trick:
+    # rename to CMakeLists.txt.previous and not CMakeLists.previous.txt
+    # since grepping for all *.txt files would then hit these outdated ones.
     V2C_Util_File.mv(output_file, output_file + ".previous")
   end
   # activate our version
