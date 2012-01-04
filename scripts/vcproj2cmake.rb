@@ -1487,24 +1487,32 @@ def generate_project(p_vcproj, out, target, main_files, arr_config_info)
 	$global_generator.put_hook_post_target()
 
 	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
+      } # [END per-config handling]
 
+      # Now that we likely _do_ have a valid target
+      # (created by at least one of the Debug/Release/... build configs),
+      # *iterate through the configs again* and add config-specific
+      # definitions. This is necessary (fix for multi-config
+      # environment).
+      if target_is_valid
+        str_conditional = "TARGET #{target.name}"
+        syntax_generator.write_conditional_if(str_conditional)
+      arr_config_info.each { |config_info_curr|
         # NOTE: the commands below can stay in the general section (outside of
         # var_v2c_want_buildcfg_curr above), but only since they define properties
         # which are clearly named as being configuration-_specific_ already!
-        if target_is_valid
-	  str_conditional = "TARGET #{target.name}"
-	  syntax_generator.write_conditional_if(str_conditional)
-	    # I don't know WhyTH we're iterating over a compiler_info here,
-	    # but let's just do it like that for now since it's required
-	    # by our current data model:
-	    config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-              target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
-      	      # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-              target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, "MSVC")
-	    }
-	  syntax_generator.write_conditional_end(str_conditional)
-        end
-      } # [END per-config handling]
+        #
+	# I don't know WhyTH we're iterating over a compiler_info here,
+	# but let's just do it like that for now since it's required
+	# by our current data model:
+	  config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+            target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
+            # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
+            target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, "MSVC")
+          }
+        }
+        syntax_generator.write_conditional_end(str_conditional)
+      end
 
       if target_is_valid
 	target_generator.set_properties_vs_scc(target.scc_info)
