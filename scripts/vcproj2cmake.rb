@@ -41,15 +41,17 @@
 
 # TODO:
 # - perhaps there's a way to provide more precise/comfortable hook script handling?
-# - should continue with clean separation of .vcproj content parsing and .vcproj output
+# - should finish clean separation of .vcproj content parsing and .vcproj output
 #   generation (e.g. in preparation for .vcxproj support)
-#   And move everything into classes (not sure about the extent of Ruby
-#   support here). Create vcproj parser class(es) which works on a
-#   common parser support base class, feed it some vcproj configuration
-#   class, configure that class, then push it (with the vcproj settings
-#   it contains) over to a CMake generator class.
-# - try to come up with an ingenious way to near-_automatically_ handle those pesky repeated
-#   dependency requirements of several sub projects
+#   We now have .vcproj parser class(es) which work on a
+#   common parser support base class, get fed a vcproj configuration class
+#   (well, build cfg, actually), configure that class.
+#   We then push it (with the .vcproj-gathered settings it contains)
+#   over to a CMake generator class.
+# - possibly add parser or generator functionality
+#   for build systems other than .vcproj/.vcxproj/CMake? :)
+# - try to come up with an ingenious way to near-_automatically_ handle
+#   those pesky repeated dependency requirements of several sub projects
 #   (e.g. the component-based Boost Find scripts, etc.) instead of having to manually
 #   write custom hook script content (which cannot be kept synchronized
 #   with changes _automatically_!!) each time due to changing components and libraries.
@@ -159,6 +161,7 @@ $filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
 $filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
 ### USER-CONFIGURABLE SECTION END ###
+
 
 master_project_location = File.expand_path($master_project_dir)
 p_master_proj = Pathname.new(master_project_location)
