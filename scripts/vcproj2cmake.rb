@@ -225,17 +225,6 @@ def log_fatal(str)
   exit 1
 end
 
-def puts_ind(chan, str)
-  chan.print ' ' * $indent_now
-  chan.puts str
-end
-
-# tiny helper, simply to save some LOC
-def new_puts_ind(chan, str)
-  chan.puts
-  puts_ind(chan, str)
-end
-
 # Change \ to /, and remove leading ./
 def normalize_path(p)
   felems = p.gsub("\\", "/").split("/")
@@ -465,7 +454,8 @@ class V2C_CMakeSyntaxGenerator
     }
   end
   def write_line(part)
-    puts_ind(@out, part)
+    @out.print ' ' * $indent_now
+    @out.puts part
   end
 
   def write_empty_line
@@ -952,7 +942,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
 
   def write_target_library_static
-    #puts_ind(out, "add_library_vcproj2cmake( #{target.name} STATIC ${SOURCES} )")
+    #write_new_line("add_library_vcproj2cmake( #{target.name} STATIC ${SOURCES} )")
     write_new_line("add_library(#{@target.name} STATIC ${SOURCES})")
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
@@ -1075,15 +1065,17 @@ end
 $vs7_prop_var_scan_regex = "\\$\\(([[:alnum:]_]+)\\)"
 $vs7_prop_var_match_regex = "\\$\\([[:alnum:]_]+\\)"
 
-$vs7_value_separator_regex = "[;,]"
-
 class V2C_VS7Parser
+  def initialize
+    @vs7_value_separator_regex = "[;,]"
+  end
+
   def read_compiler_additional_include_directories(compiler_xml, arr_includes)
     attr_incdir = compiler_xml.attributes["AdditionalIncludeDirectories"]
     if not attr_incdir.nil?
       # FIXME: we should probably get rid of sort() here (and elsewhere),
       # but for now we'll keep it, to retain identically generated files.
-      include_dirs = attr_incdir.split(/#{$vs7_value_separator_regex}/).sort.each { |elem_inc_dir|
+      include_dirs = attr_incdir.split(/#{@vs7_value_separator_regex}/).sort.each { |elem_inc_dir|
         elem_inc_dir = normalize_path(elem_inc_dir).strip
         #log_info "include is '#{elem_inc_dir}'"
         arr_includes.push(elem_inc_dir)
@@ -1094,7 +1086,7 @@ class V2C_VS7Parser
   def read_compiler_preprocessor_definitions(compiler_xml, hash_defines)
     attr_defines = compiler_xml.attributes["PreprocessorDefinitions"]
     if not attr_defines.nil?
-      attr_defines.split(/#{$vs7_value_separator_regex}/).each { |elem_define|
+      attr_defines.split(/#{@vs7_value_separator_regex}/).each { |elem_define|
         str_define_key, str_define_value = elem_define.strip.split(/=/)
         # Since a Hash will indicate nil for any non-existing key,
         # we do need to fill in _empty_ value for our _existing_ key.
@@ -1119,7 +1111,7 @@ class V2C_VS7Parser
   def read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
     attr_lib_dirs = linker_xml.attributes["AdditionalLibraryDirectories"]
     if attr_lib_dirs and attr_lib_dirs.length > 0
-      attr_lib_dirs.split(/#{$vs7_value_separator_regex}/).each { |elem_lib_dir|
+      attr_lib_dirs.split(/#{@vs7_value_separator_regex}/).each { |elem_lib_dir|
         elem_lib_dir = normalize_path(elem_lib_dir).strip
         #log_info "lib dir is '#{elem_lib_dir}'"
         arr_lib_dirs.push(elem_lib_dir)
@@ -1380,9 +1372,9 @@ def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
 
       ## sub projects will inherit, and we _don't_ want that...
       # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
-      #puts_ind(out, "# reset project-local variables")
-      #puts_ind(out, "set( V2C_LIBS )")
-      #puts_ind(out, "set( V2C_SOURCES )")
+      #syntax_generator.write_line("# reset project-local variables")
+      #syntax_generator.write_line("set( V2C_LIBS )")
+      #syntax_generator.write_line("set( V2C_SOURCES )")
 
       global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
 
@@ -1462,7 +1454,7 @@ def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
     	  case config_info_curr.type
           when 1       # typeApplication (.exe)
 	    target_is_valid = true
-            #puts_ind(out, "add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
+            #syntax_generator.write_line("add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
             # TODO: perhaps for real cross-platform binaries (i.e.
             # console apps not needing a WinMain()), we should detect
             # this and not use WIN32 in this case...
@@ -1470,7 +1462,7 @@ def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
 	    target_generator.write_target_executable()
           when 2    # typeDynamicLibrary (.dll)
 	    target_is_valid = true
-            #puts_ind(out, "add_library_vcproj2cmake( #{target.name} SHARED ${SOURCES} )")
+            #syntax_generator.write_line("add_library_vcproj2cmake( #{target.name} SHARED ${SOURCES} )")
             # add_library() docs: "If no type is given explicitly the type is STATIC or  SHARED
             #                      based on whether the current value of the variable
             #                      BUILD_SHARED_LIBS is true."
