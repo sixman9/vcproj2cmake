@@ -1628,24 +1628,17 @@ File.open(tmpfile.path, "w") { |out|
         config_info_curr.use_of_mfc = config_xml.attributes["UseOfMFC"].to_i
         config_info_curr.use_of_atl = config_xml.attributes["UseOfATL"].to_i
 
-	arr_config_info.push(config_info_curr)
-
-	config_info = config_info_curr
-
         config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
 	  compiler_info = V2C_Compiler_Info.new
-	  arr_flags_curr = compiler_info.arr_flags
-    	  arr_includes_curr = compiler_info.arr_includes
-	  $global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes_curr)
+	  $global_parser.read_compiler_additional_include_directories(compiler_xml, compiler_info.arr_includes)
 
 	  $global_parser.read_compiler_preprocessor_definitions(compiler_xml, compiler_info.hash_defines)
-          if config_info.use_of_mfc == 2
+          if config_info_curr.use_of_mfc == 2
             compiler_info.hash_defines["_AFXEXT"] = ""
 	    compiler_info.hash_defines["_AFXDLL"] = ""
           end
 
           attr_opts = compiler_xml.attributes["AdditionalOptions"]
-
 	  # Oh well, we might eventually want to provide a full-scale
 	  # translation of various compiler switches to their
 	  # counterparts on compilers of various platforms, but for
@@ -1657,7 +1650,7 @@ File.open(tmpfile.path, "w") { |out|
 
 	    # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
 	    # simply make reverse use of existing translation table in CMake source.
-	    arr_flags_curr = attr_opts.split(";")
+	    compiler_info.arr_flags = attr_opts.split(";")
           end
 
 	  config_info_curr.arr_compiler_info.push(compiler_info)
@@ -1679,6 +1672,8 @@ File.open(tmpfile.path, "w") { |out|
 	    config_info_curr.arr_linker_info.push(linker_info_curr)
           }
 	end
+
+	arr_config_info.push(config_info_curr)
       }
 
       generate_project(p_vcproj, out, target, main_files, arr_config_info)
