@@ -766,6 +766,11 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # a # way of specifying _per-configuration_ syntax of include_directories().
     # See "[CMake] vcproj2cmake.rb script: announcing new version / hosting questions"
     #   http://www.cmake.org/pipermail/cmake/2010-June/037538.html
+    #
+    # Side note #2: relative arguments to include_directories() (e.g. "..")
+    # are relative to CMAKE_PROJECT_SOURCE_DIR and _not_ BINARY,
+    # at least on Makefile and .vcproj.
+    # CMake dox currently don't offer such details... (yet!)
     if not arr_includes.empty?
       arr_includes_translated = Array.new
       arr_includes.each { |elem_inc_dir|
