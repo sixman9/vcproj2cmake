@@ -762,6 +762,10 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   end
 
   def write_include_directories(arr_includes, map_includes)
+    # Side note: unfortunately CMake as of 2.8.7 probably still does not have
+    # a # way of specifying _per-configuration_ syntax of include_directories().
+    # See "[CMake] vcproj2cmake.rb script: announcing new version / hosting questions"
+    #   http://www.cmake.org/pipermail/cmake/2010-June/037538.html
     if not arr_includes.empty?
       arr_includes_translated = Array.new
       arr_includes.each { |elem_inc_dir|
