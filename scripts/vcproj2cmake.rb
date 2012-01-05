@@ -729,11 +729,18 @@ def cmake_element_handle_quoting(elem)
   # whitespace or the other way around.
   # Quoting rules seem terribly confusing, will need to revisit things
   # to get it all precisely correct.
+  # For details, see "Quoting" http://www.itk.org/Wiki/CMake/Language_Syntax
   needs_quoting = false
   has_quotes = false
   # "contains at least one whitespace character,
   # and then prefixed or followed by any non-whitespace char value"
-  if elem.match(/[^\s]\s|\s[^\s]/)
+  # Well, that's not enough - consider a concatenation of variables
+  # such as
+  # ${v1} ${v2}
+  # which should NOT be quoted (whereas ${v1} ascii ${v2} should!).
+  # As a bandaid to detect variable syntax, make sure to skip
+  # closing bracket/dollar sign as well.
+  if elem.match(/[^\}\s]\s|\s[^\s\$]/)
     needs_quoting = true
   end
   if elem.match(/".*"/)
