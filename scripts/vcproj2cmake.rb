@@ -539,6 +539,8 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # "[CMake] CMAKE_MFC_FLAG is inherited in subdirectory ?"
     #   http://www.cmake.org/pipermail/cmake/2009-February/026896.html
     # I'd strongly assume yes...
+    # See also "Re: [CMake] CMAKE_MFC_FLAG not working in functions"
+    #   http://www.mail-archive.com/cmake@cmake.org/msg38677.html
 
     #if config_info.use_of_mfc > 0
       write_new_line("set(CMAKE_MFC_FLAG #{config_info.use_of_mfc})")
