@@ -1273,6 +1273,9 @@ end
 #   http://msdn.microsoft.com/en-us/library/ms171459.aspx
 # "Macros for Build Commands and Properties"
 #   http://msdn.microsoft.com/en-us/library/c02as0cs%28v=vs.71%29.aspx
+# To examine real-life values of such MSVS configuration/environment variables,
+# open a Visual Studio project's additional library directories dialog,
+# then press its "macros" button for a nice list.
 def vs7_create_config_variable_translation(str, arr_config_var_handling)
   # http://langref.org/all-languages/pattern-matching/searching/loop-through-a-string-matching-a-regex-and-performing-an-action-for-each-match
   str_scan_copy = str.dup # create a deep copy of string, to avoid "`scan': string modified (RuntimeError)"
