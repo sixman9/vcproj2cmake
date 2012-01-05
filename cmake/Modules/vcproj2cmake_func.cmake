@@ -30,6 +30,10 @@ file(GLOB root_mappings_files_list "${CMAKE_SOURCE_DIR}/${v2c_mappings_files_exp
 # Sanitize CMAKE_BUILD_TYPE setting:
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
+  # Side note: this message may appear during _initial_ configuration run
+  # (MSVS 2005 generator). I suppose that this is perfectly ok,
+  # since CMake probably still needs to make up its mind as to which
+  # configuration types (MinSizeRel, Debug etc.) are available.
   message("WARNING: CMAKE_BUILD_TYPE was not specified - defaulting to ${CMAKE_BUILD_TYPE} setting!")
 endif(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 
