@@ -1,0 +1,10 @@
+# Since on Win32 Boost lib path is required for certain Boost-internal
+# dependencies (specific handling via target_link_library() of individual
+# dependencies will thus fail since it's insufficient),
+# we need to carry it over as link_directory() as well
+# (which is already the case in the original project files).
+# HOWEVER, since the hardcoded lib dir naming is _specifically versioned_,
+# this will break in case of FindBoost offering a different version.
+# Thus translating the hardcoded dir name into BOOST_LIBRARYDIR is _required_
+# (but again, possibly on Win32 only, see above).
+.*/Boost/1_.*/lib:WIN32=${BOOST_LIBRARYDIR}
