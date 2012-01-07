@@ -447,6 +447,19 @@ class V2C_CMakeSyntaxGenerator
       }
     end
   end
+  def write_command_quoted_list(cmake_command, cmake_command_arg, arr_elems)
+    if cmake_command_arg.nil?
+      cmake_command_arg = ""
+    end
+    write_line("#{cmake_command}(#{cmake_command_arg}")
+    cmake_indent_more()
+      arr_elems.each do |curr_value|
+        curr_value_quot = cmake_element_handle_quoting(curr_value)
+        write_line("#{curr_value_quot}")
+      end
+    cmake_indent_less()
+    write_line(")")
+  end
 
   def write_block(block)
     block.split("\n").each { |line|
@@ -785,7 +798,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
         elem_inc_dir = vs7_create_config_variable_translation(elem_inc_dir, @arr_config_var_handling)
         arr_includes_translated.push(elem_inc_dir)
       }
-      write_build_attributes("include_directories", "", arr_includes_translated, map_includes, nil)
+      write_build_attributes("include_directories", arr_includes_translated, map_includes, nil)
     end
   end
 
@@ -800,7 +813,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       "It is said to be preferable to be able to use target_link_libraries()\n" \
       "rather than the very unspecific link_directories()." \
     )
-    write_build_attributes("link_directories", "", arr_lib_dirs_translated, map_lib_dirs, nil)
+    write_build_attributes("link_directories", arr_lib_dirs_translated, map_lib_dirs, nil)
   end
   def write_directory_property_compile_flags(attr_opts)
     return if attr_opts.nil?
@@ -815,7 +828,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     write_conditional_end(str_platform)
   end
   # FIXME private!
-  def write_build_attributes(cmake_command, element_prefix, arr_defs, map_defs, cmake_command_arg)
+  def write_build_attributes(cmake_command, arr_defs, map_defs, cmake_command_arg)
     # the container for the list of _actual_ dependencies as stated by the project
     all_platform_defs = Hash.new
     parse_platform_conversions(all_platform_defs, arr_defs, map_defs)
@@ -826,17 +839,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       write_empty_line()
       str_platform = key if not key.eql?("ALL")
       write_conditional_if(str_platform)
-        if cmake_command_arg.nil?
-          cmake_command_arg = ""
-        end
-        write_line("#{cmake_command}(#{cmake_command_arg}")
-        cmake_indent_more()
-          arr_platdefs.each do |curr_value|
-            curr_value_quot = cmake_element_handle_quoting(curr_value)
-            write_line("#{element_prefix}#{curr_value_quot}")
-          end
-        cmake_indent_less()
-        write_line(")")
+        write_command_quoted_list(cmake_command, cmake_command_arg, arr_platdefs)
       write_conditional_end(str_platform)
     }
   end
@@ -907,15 +910,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # process our hierarchy's own files
     if not arr_local_sources.nil?
       source_files_variable = "SOURCES_files_#{group_tag}"
-      write_new_line("set(#{source_files_variable}" )
-      cmake_indent_more()
-        arr_local_sources.each { |source|
-          #log_info "quotes now: #{source}"
-          source_quot = cmake_element_handle_quoting(source)
-          write_line(source_quot)
-        }
-      cmake_indent_less()
-      write_line(")")
+      write_command_quoted_list("set", "#{source_files_variable}", arr_local_sources)
       # create source_group() of our local files
       if not parent_source_group.nil?
         write_line("source_group(\"#{this_source_group}\" FILES ${#{source_files_variable}})")
@@ -1021,7 +1016,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
   def write_link_libraries(arr_dependencies, map_dependencies)
     arr_dependencies.push("${V2C_LIBS}")
-    @localGenerator.write_build_attributes("target_link_libraries", "", arr_dependencies, map_dependencies, @target.name)
+    @localGenerator.write_build_attributes("target_link_libraries", arr_dependencies, map_dependencies, @target.name)
   end
   def set_properties_vs_scc(scc_info)
     # Keep source control integration in our conversion!
