@@ -59,6 +59,7 @@
 require 'tempfile'
 require 'pathname'
 require 'rexml/document'
+#require 'find' # Find.find()
 
 # http://devblog.vworkapp.com/post/910714976/best-practice-for-rubys-require
 
@@ -70,6 +71,52 @@ require 'vcproj2cmake/util_file' # V2C_Util_File.cmp()
 # load common settings
 load 'vcproj2cmake_settings.rb'
 
+
+### USER-CONFIGURABLE SECTION ###
+
+# global variable to indicate whether we want debug output or not
+$debug = true
+
+# Initial number of spaces for indenting
+$indent_num_spaces = 0
+
+# Number of spaces to increment by
+$indent_step = 2
+
+### USER-CONFIGURABLE SECTION END ###
+
+
+
+
+#Find.find('./plugins/vcproj2cmake_parser_*.rb') do
+#  |plugin_parser|
+#
+#  load plugin_parser
+#
+#  # register project file extension name in plugin manager array, ...
+#end
+
+arr_plugin_parser = Array.new
+
+Plugin_Parser_str = Struct.new(:parser_name, :extension_name)
+
+# TODO: to be automatically filled in from parser plugins
+
+str_plugin_parser_vs7 = Plugin_Parser_str.new
+
+str_plugin_parser_vs7[:parser_name] = "Visual Studio 7+"
+str_plugin_parser_vs7[:extension_name] = "vcproj"
+
+arr_plugin_parser.push(str_plugin_parser_vs7)
+
+str_plugin_parser_vs10 = Plugin_Parser_str.new
+
+str_plugin_parser_vs10[:parser_name] = "Visual Studio 10"
+str_plugin_parser_vs10[:extension_name] = "vcxproj"
+
+arr_plugin_parser.push(str_plugin_parser_vs10)
+
+
 # Usage: vcproj2cmake.rb <input.vc[x]proj> [<output CMakeLists.txt>] [<master project directory>]
 
 #*******************************************************************************************************
@@ -78,6 +125,8 @@ load 'vcproj2cmake_settings.rb'
 cl_error = ""
 
 script_name = $0
+
+vcproj_filename = nil
 
 if ARGV.length < 1
    cl_error = "*** Too few arguments\n"
@@ -89,19 +138,36 @@ else
    # OK: ruby-1.8.5-5.el5_4.8, KO: u10.04 ruby1.8 1.8.7.249-2 and ruby1.9.1 1.9.1.378-1
    # http://redmine.ruby-lang.org/issues/show/3882
    # TODO: add a version check to conditionally skip this cleanup effort?
-   vcproj_filename = Pathname.new(str_vcproj_filename).cleanpath
+   vcproj_filename_full = Pathname.new(str_vcproj_filename).cleanpath
 
-   if File.extname(vcproj_filename) != ".vcproj"
-      # The first argument on the command-line did not have a '.vcproj' extension.
-      # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
-      # (Note:  Only '+' works here for concatenation, not '<<'.)
-      vcproj_filename = vcproj_filename + ".vcproj"
+   arr_plugin_parser.each { |str_plugin_parser_curr|
+     vcproj_filename_test = vcproj_filename_full.clone
+     parser_extension = ".#{str_plugin_parser_curr[:extension_name]}"
+     if File.extname(vcproj_filename_test) == parser_extension
+       vcproj_filename = vcproj_filename_test
+       break
+     else
+        # The first argument on the command-line did not have a '.vcproj' extension.
+        # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
+        # (Note:  Only '+' works here for concatenation, not '<<'.)
+        vcproj_filename_test += parser_extension
+  
+        #puts "Looking for #{vcproj_filename}"
+        if FileTest.exist?(vcproj_filename_test)
+          vcproj_filename = vcproj_filename_test
+	  break
+        end
+     end
+   }
+end
 
-      #puts "Looking for #{vcproj_filename}"
-      unless FileTest.exist?(vcproj_filename)
-         cl_error = "*** The first argument must be the Visual Studio project name\n"
-      end
-   end
+if vcproj_filename.nil?
+  str_parser_descrs = ""
+  arr_plugin_parser.each { |str_plugin_parser_named|
+    str_parser_descr_elem = ".#{str_plugin_parser_named[:extension_name]} [#{str_plugin_parser_named[:parser_name]}]"
+    str_parser_descrs += str_parser_descr_elem + ", "
+  }
+  cl_error = "*** The first argument must be the project name / file (supported parsers: #{str_parser_descrs})\n"
 end
 
 if ARGV.length > 3
@@ -113,11 +179,20 @@ unless cl_error == ""
 *** Input Error *** #{script_name}
 #{cl_error}
 
-Usage: vcproj2cmake.rb <input.vcproj> [<output CMakeLists.txt>] [<master project directory>]
+Usage: vcproj2cmake.rb <project input file> [<output CMakeLists.txt>] [<master project directory>]
+
+project input file can e.g. have .vcproj or .vcxproj extension.
 }
 
-   exit
+   exit 1
 end
+
+# TODO: create the proper parser object!
+# "Dynamically instantiate a class"
+#   http://www.ruby-forum.com/topic/141758
+
+#if File.extname(vcproj_filename) == ".vcproj"
+#end
 
 # Process the optional command-line arguments
 # -------------------------------------------
@@ -136,17 +211,6 @@ if not $master_project_dir
 end
 #*******************************************************************************************************
 
-### USER-CONFIGURABLE SECTION ###
-
-# global variable to indicate whether we want debug output or not
-$debug = false
-
-# Initial number of spaces for indenting
-$indent_num_spaces = 0
-
-# Number of spaces to increment by
-$indent_step = 2
-
 # since the .vcproj multi-configuration environment has some settings
 # that can be specified per-configuration (target type [lib/exe], include directories)
 # but where CMake unfortunately does _NOT_ offer a configuration-specific equivalent,
@@ -159,8 +223,6 @@ $config_multi_authoritative = ""
 $filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
 $filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
 $filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
-
-### USER-CONFIGURABLE SECTION END ###
 
 
 master_project_location = File.expand_path($master_project_dir)
@@ -328,7 +390,7 @@ end
 # is supposed to be eerily similar to the one used by CMake.
 # Dito for naming of individual methods...
 #
-# Global generator: generates/manages parts which are not project-local/target-related
+# Global generator: generates/manages parts which are not project-local/target-related (i.e., manages things related to the _entire solution_ configuration)
 # local generator: has a Makefile member (which contains a list of targets),
 #   then generates project files by iterating over the targets via a newly generated target generator each.
 # target generator: generates targets. This is the one creating/producing the output file stream. Not provided by all generators (VS10 yes, VS7 no).
@@ -357,6 +419,7 @@ end
 class V2C_Config_Info
   def initialize
     @name = 0
+    @platform = 0 # FIXME: not yet supported by VS7 parser!
     @type = 0
     @use_of_mfc = 0
     @use_of_atl = 0
@@ -364,6 +427,7 @@ class V2C_Config_Info
     @arr_linker_info = Array.new
   end
   attr_accessor :name
+  attr_accessor :platform
   attr_accessor :type
   attr_accessor :use_of_mfc
   attr_accessor :use_of_atl
@@ -395,12 +459,20 @@ end
 
 class V2C_Target
   def initialize
+    @type = nil # project type
     @name = nil
+    @guid = nil
+    @root_namespace = nil
+    @version = nil
     @vs_keyword = nil
     @scc_info = V2C_SCC_Info.new
   end
 
+  attr_accessor :type
   attr_accessor :name
+  attr_accessor :guid
+  attr_accessor :root_namespace
+  attr_accessor :version
   attr_accessor :vs_keyword
   attr_accessor :scc_info
 end
@@ -1281,9 +1353,9 @@ def vs7_create_config_variable_translation(str, arr_config_var_handling)
     config_var_upcase = config_var.upcase
     config_var_replacement = ""
     case config_var_upcase
-      when /CONFIGURATIONNAME/
+      when "CONFIGURATIONNAME"
       	config_var_replacement = "${CMAKE_CFG_INTDIR}"
-      when /PLATFORMNAME/
+      when "PLATFORMNAME"
         config_var_emulation_code = <<EOF
   if(NOT v2c_VS_PlatformName)
     if(CMAKE_CL_64)
@@ -1298,13 +1370,13 @@ EOF
         arr_config_var_handling.push(config_var_emulation_code)
 	config_var_replacement = "${v2c_VS_PlatformName}"
         # InputName is said to be same as ProjectName in case input is the project.
-      when /INPUTNAME|PROJECTNAME/
+      when "INPUTNAME", "PROJECTNAME"
       	config_var_replacement = "${PROJECT_NAME}"
         # See ProjectPath reasoning below.
-      when /INPUTFILENAME|PROJECTFILENAME/
+      when "INPUTFILENAME", "PROJECTFILENAME"
         # config_var_replacement = "${PROJECT_NAME}.vcproj"
 	config_var_replacement = "${v2c_VS_#{config_var}}"
-      when /OUTDIR/
+      when "OUTDIR"
         # FIXME: should extend code to do executable/library/... checks
         # and assign CMAKE_LIBRARY_OUTPUT_DIRECTORY / CMAKE_RUNTIME_OUTPUT_DIRECTORY
         # depending on this.
@@ -1312,18 +1384,18 @@ EOF
   set(v2c_CS_OutDir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 EOF
 	config_var_replacement = "${v2c_VS_OutDir}"
-      when /PROJECTDIR/
+      when "PROJECTDIR"
 	config_var_replacement = "${PROJECT_SOURCE_DIR}"
-      when /PROJECTPATH/
+      when "PROJECTPATH"
         # ProjectPath emulation probably doesn't make much sense,
         # since it's a direct path to the MSVS-specific .vcproj file
         # (redirecting to CMakeLists.txt file likely isn't correct/useful).
 	config_var_replacement = "${v2c_VS_ProjectPath}"
-      when /SOLUTIONDIR/
+      when "SOLUTIONDIR"
         # Probability of SolutionDir being identical to CMAKE_SOURCE_DIR
 	# (i.e. the source root dir) ought to be strongly approaching 100%.
 	config_var_replacement = "${CMAKE_SOURCE_DIR}"
-      when /TARGETPATH/
+      when "TARGETPATH"
         config_var_emulation_code = ""
         arr_config_var_handling.push(config_var_emulation_code)
 	config_var_replacement = "${v2c_VS_TargetPath}"
@@ -1354,8 +1426,63 @@ EOF
   return str
 end
 
-def project_parse_vs7(vcproj_filename, arr_targets, arr_config_info)
-  File.open(vcproj_filename) { |io|
+class V2C_VSParserBase
+  def unknown_element(elem_name)
+    log_error "unknown XML element (#{elem_name})!"
+  end
+end
+
+class V2C_VS7ProjectParserBase < V2C_VSParserBase
+end
+
+class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
+  def initialize(project_xml, target_out, arr_config_info)
+    @project_xml = project_xml
+    @target = target_out
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    @project_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when "Keyword"
+        @target.vs_keyword = attr_value
+      when "Name"
+        @target.name = attr_value
+      when "ProjectGUID"
+        @target.guid = attr_value
+      when "ProjectType"
+        @target.type = attr_value
+      when "RootNamespace"
+        @target.root_namespace = attr_value
+      when "Version"
+        @target.version = attr_value
+
+      # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+      # exist, too... (one project had SccProvider missing). HOWEVER,
+      # CMake generator does expect all three to exist when available! Hmm.
+      when "SccProjectName"
+        @target.scc_info.project_name = attr_value
+      # There's a special SAK (Should Already Know) entry marker
+      # (see e.g. http://stackoverflow.com/a/6356615 ).
+      # Currently I don't believe we need to handle "SAK" in special ways
+      # (such as filling it in in case of missing entries),
+      # transparent handling ought to be sufficient.
+      when "SccLocalPath"
+        @target.scc_info.local_path = attr_value
+      when "SccProvider"
+        @target.scc_info.provider = attr_value
+      when "SccAuxPath"
+        @target.scc_info.aux_path = attr_value
+      else
+        unknown_element(attr_xml.name)
+      end
+    }
+  end
+end
+
+def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
+  File.open(proj_filename) { |io|
     doc = REXML::Document.new io
 
     global_parser = V2C_VS7Parser.new
@@ -1364,32 +1491,9 @@ def project_parse_vs7(vcproj_filename, arr_targets, arr_config_info)
 
       target = V2C_Target.new
 
-      target.name = project_xml.attributes["Name"]
-      target.vs_keyword = project_xml.attributes["Keyword"]
+      project_parser = V2C_VS7ProjectParser.new(project_xml, target, arr_config_info)
 
-      # we can handle the following target stuff outside per-config handling (reason: see comment above)
-      scc_info = target.scc_info
-      if not project_xml.attributes["SccProjectName"].nil?
-        scc_info.project_name = project_xml.attributes["SccProjectName"].clone
-        # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
-        # exist, too... (one project had SccProvider missing). HOWEVER,
-	# CMake generator does expect all three to exist when available! Hmm.
-	#
-	# There's a special SAK (Should Already Know) entry marker
-	# (see e.g. http://stackoverflow.com/a/6356615 ).
-	# Currently I don't believe we need to handle "SAK" in special ways
-	# (such as filling it in in case of missing entries),
-	# transparent handling ought to be sufficient.
-        if not project_xml.attributes["SccLocalPath"].nil?
-          scc_info.local_path = project_xml.attributes["SccLocalPath"].clone
-        end
-        if not project_xml.attributes["SccProvider"].nil?
-          scc_info.provider = project_xml.attributes["SccProvider"].clone
-        end
-        if not project_xml.attributes["SccAuxPath"].nil?
-          scc_info.aux_path = project_xml.attributes["SccAuxPath"].clone
-        end
-      end
+      project_parser.parse
 
       $have_build_units = false
 
@@ -1507,21 +1611,185 @@ def project_parse_vs7(vcproj_filename, arr_targets, arr_config_info)
   }
 end
 
+# NOTE: VS10 == MSBuild == somewhat Ant-based.
+# Thus it would probably be useful to create an Ant syntax parser base class
+# and derive MSBuild-specific behaviour from it.
 class V2C_VS10Parser
 end
 
-def project_parse_vs10(vcxproj_filename, arr_targets, arr_config_info)
-  File.open(vcproj_filename) { |io|
+class V2C_VS10ParserBase < V2C_VSParserBase
+end
+
+class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
+  def initialize(itemgroup_xml, arr_config_info)
+    @itemgroup_xml = itemgroup_xml
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    @itemgroup_xml.elements.each { |itemgroup_elem_xml|
+      case itemgroup_elem_xml.name
+      when "ProjectConfiguration"
+        config_info = V2C_Config_Info.new
+        itemgroup_elem_xml.elements.each  { |projcfg_elem_xml|
+          case projcfg_elem_xml.name
+          when "Configuration"
+            config_info.name = projcfg_elem_xml.text
+            log_debug "ProjectConfig: Configuration #{config_info.name}"
+          when "Platform"
+            config_info.platform = projcfg_elem_xml.text
+            log_debug "ProjectConfig: Platform #{config_info.platform}"
+          else
+            unknown_element("project config item group, name #{projcfg_elem_xml.name}!")
+          end
+	}
+	@arr_config_info.push(config_info)
+      else
+        unknown_element("project configs item group, name #{itemgroup_elem_xml.name}!")
+      end
+    }
+  end
+end
+
+class V2C_VS10ItemGroupAnonymousParser < V2C_VS10ParserBase
+  def initialize(itemgroup_xml, itemgroup_out)
+    @itemgroup_xml = itemgroup_xml
+    @itemgroup = itemgroup_out
+  end
+  def parse
+    puts "FIXME!! V2C_VS10ItemGroupAnonymousParser"
+  end
+end
+
+class V2C_VS10ItemGroupParser < V2C_VS10ParserBase
+  def initialize(itemgroup_xml, target_out, arr_config_info)
+    @itemgroup_xml = itemgroup_xml
+    @target = target_out
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    itemgroup_label = @itemgroup_xml.attributes["Label"]
+    log_debug "item group, Label #{itemgroup_label}!"
+    item_group_parser = nil
+    case itemgroup_label
+    when "ProjectConfigurations"
+      item_group_parser = V2C_VS10ItemGroupProjectConfigParser.new(@itemgroup_xml, @arr_config_info)
+    when nil
+      item_group_parser = V2C_VS10ItemGroupAnonymousParser.new(@itemgroup_xml, @target)
+    else
+      unknown_element("item group, Label #{itemgroup_label}")
+    end
+    if not item_group_parser.nil?
+      item_group_parser.parse
+    end
+  end
+end
+
+class V2C_VS10PropertyGroupGlobalsParser < V2C_VS10ParserBase
+  def initialize(propgroup_xml, target_out)
+    @propgroup_xml = propgroup_xml
+    @target = target_out
+  end
+  def parse
+    @propgroup_xml.elements.each { |propelem_xml|
+      case propelem_xml.name
+      when "Keyword"
+        @target.vs_keyword = propelem_xml.text
+      when "ProjectGuid"
+        @target.guid = propelem_xml.text
+      when "ProjectName"
+        @target.name = propelem_xml.text
+      when "RootNamespace"
+        @target.root_namespace = propelem_xml.text
+      else
+        unknown_element(propelem_xml.name)
+      end
+    }
+  end
+end
+
+class V2C_VS10PropertyGroupParser < V2C_VS10ParserBase
+  def initialize(propgroup_xml, target_out)
+    @propgroup_xml = propgroup_xml
+    @target = target_out
+  end
+  def parse
+    @propgroup_xml.attributes.each_attribute { |attr_xml|
+      case attr_xml.name
+      when "Label"
+        propgroup_label = attr_xml.value
+        log_debug "property group, Label #{propgroup_label}!"
+        case propgroup_label
+        when "Globals"
+          propgroup_parser = V2C_VS10PropertyGroupGlobalsParser.new(@propgroup_xml, @target)
+          propgroup_parser.parse
+        else
+          unknown_element("property group, Label #{propgroup_label}")
+        end
+      else
+        unknown_element("property group, attribute #{attr_xml.name}")
+      end
+    }
+  end
+end
+
+class V2C_VS10ProjectParserBase < V2C_VS10ParserBase
+end
+
+class V2C_VS10ProjectParser < V2C_VS10ProjectParserBase
+  def initialize(project_xml, target_out, arr_config_info)
+    @project_xml = project_xml
+    @target = target_out
+    @arr_config_info = arr_config_info
+  end
+
+  def parse
+    # Do strict traversal over _all_ elements, parse what's supported by us,
+    # and yell loudly for any element which we don't know about!
+    # FIXME: VS7 parser should be changed to do the same thing...
+    @project_xml.elements.each { |elem_xml|
+      proj_elem_parser = nil
+      case elem_xml.name
+      when "ItemGroup"
+        proj_elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
+      when "PropertyGroup"
+        proj_elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target)
+      else
+        unknown_element(elem_xml.name)
+      end
+      if not proj_elem_parser.nil?
+        proj_elem_parser.parse
+      end
+    }
+  end
+end
+
+def project_parse_vs10(proj_filename, arr_targets, arr_config_info)
+  File.open(proj_filename) { |io|
     doc = REXML::Document.new io
 
-    global_parser = V2C_VS10Parser.new
+    # FIXME: object encapsulation/hierarchy is not completely clean yet...
+    # (dito VS7 parsing)
 
-    doc.elements.each("VisualStudioProject") { |project_xml|
+    #global_parser = V2C_VS10Parser.new
+
+    doc.elements.each("Project") { |project_xml|
+        target = V2C_Target.new
+	project_parser = V2C_VS10ProjectParser.new(project_xml, target, arr_config_info)
+
+	project_parser.parse
+	arr_targets.push(target)
     }
   }
 end
 
 def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
+      if target.nil?
+        log_fatal "invalid target"
+      end
+      if main_files.nil?
+        log_fatal "project has no files!?"
+      end
+
       target_is_valid = false
 
       generator_base = V2C_BaseGlobalGenerator.new
