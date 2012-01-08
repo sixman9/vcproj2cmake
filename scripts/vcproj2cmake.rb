@@ -228,9 +228,9 @@ $filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 master_project_location = File.expand_path($master_project_dir)
 p_master_proj = Pathname.new(master_project_location)
 
-p_vcproj = Pathname.new(vcproj_filename)
+$p_vcproj = Pathname.new(vcproj_filename)
 # figure out a global project_dir variable from the .vcproj location
-$project_dir = p_vcproj.dirname
+$project_dir = $p_vcproj.dirname
 
 #p_project_dir = Pathname.new($project_dir)
 #p_cmakelists = Pathname.new(output_file)
@@ -915,7 +915,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       write_conditional_end(str_platform)
     }
   end
-  def write_func_v2c_post_setup(project_name, project_keyword, vs_proj_file_basename)
+  def write_func_v2c_post_setup(project_name, project_keyword, orig_project_file_basename)
     # Rationale: keep count of generated lines of CMakeLists.txt to a bare minimum -
     # call v2c_post_setup(), by simply passing all parameters that are _custom_ data
     # of the current generated CMakeLists.txt file - all boilerplate handling functionality
@@ -929,7 +929,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     cmake_indent_more()
       write_block( \
         "\"#{project_name}\" \"#{project_keyword}\"\n" \
-        "\"${CMAKE_CURRENT_SOURCE_DIR}/#{vs_proj_file_basename}\"\n" \
+        "\"${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}\"\n" \
         "\"${CMAKE_CURRENT_LIST_FILE}\"" \
       )
     cmake_indent_less()
@@ -1611,6 +1611,17 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
   }
 end
 
+class V2C_VS7ProjParser
+  def initialize(vcproj_filename, arr_targets, arr_config_info)
+    @vcproj_filename = vcproj_filename
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    project_parse_vs7(@vcproj_filename, @arr_targets, @arr_config_info)
+  end
+end
+
 # NOTE: VS10 == MSBuild == somewhat Ant-based.
 # Thus it would probably be useful to create an Ant syntax parser base class
 # and derive MSBuild-specific behaviour from it.
@@ -1763,26 +1774,33 @@ class V2C_VS10ProjectParser < V2C_VS10ProjectParserBase
   end
 end
 
-def project_parse_vs10(proj_filename, arr_targets, arr_config_info)
-  File.open(proj_filename) { |io|
-    doc = REXML::Document.new io
+class V2C_VS10ProjParser
+  def initialize(proj_filename, arr_targets, arr_config_info)
+    @proj_filename = proj_filename
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    File.open(@proj_filename) { |io|
+      doc = REXML::Document.new io
 
-    # FIXME: object encapsulation/hierarchy is not completely clean yet...
-    # (dito VS7 parsing)
+      # FIXME: object encapsulation/hierarchy is not completely clean yet...
+      # (dito VS7 parsing)
 
-    #global_parser = V2C_VS10Parser.new
+      #global_parser = V2C_VS10Parser.new
 
-    doc.elements.each("Project") { |project_xml|
+      doc.elements.each("Project") { |project_xml|
         target = V2C_Target.new
-	project_parser = V2C_VS10ProjectParser.new(project_xml, target, arr_config_info)
+  	project_parser = V2C_VS10ProjectParser.new(project_xml, target, @arr_config_info)
 
-	project_parser.parse
-	arr_targets.push(target)
+  	project_parser.parse
+  	@arr_targets.push(target)
+      }
     }
-  }
+  end
 end
 
-def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
+def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr_config_info)
       if target.nil?
         log_fatal "invalid target"
       end
@@ -1982,7 +2000,77 @@ def project_generate_cmake(p_vcproj, out, target, main_files, arr_config_info)
       end # target_is_valid
 
       global_generator.put_var_converter_script_location($script_location_relative_to_master)
-      local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, p_vcproj.basename)
+      local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
+end
+
+class V2C_CMakeGenerator
+  def initialize(orig_proj_file_basename, cmakelists_output_file, arr_targets, arr_config_info)
+    @orig_proj_file_basename = orig_proj_file_basename
+    @cmakelists_output_file = cmakelists_output_file
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def generate
+    @arr_targets.each { |target|
+      # write into temporary file, to avoid corrupting previous CMakeLists.txt due to disk space or failure issues
+      tmpfile = Tempfile.new('vcproj2cmake')
+
+      File.open(tmpfile.path, "w") { |out|
+        project_generate_cmake(@orig_proj_file_basename, out, target, $main_files, @arr_config_info)
+
+        # Close file, since Fileutils.mv on an open file will barf on XP
+        out.close
+      }
+     
+      # make sure to close that one as well...
+      tmpfile.close
+
+      # Since we're forced to fumble our source tree (a definite no-no in all other cases!)
+      # by writing our CMakeLists.txt there, use a write-back-when-updated approach
+      # to make sure we only write back the live CMakeLists.txt in case anything did change.
+      # This is especially important in case of multiple concurrent builds on a shared
+      # source on NFS mount.
+
+      configuration_changed = false
+      have_old_file = false
+      output_file = @cmakelists_output_file
+      if File.exists?(output_file)
+        have_old_file = true
+        if not V2C_Util_File.cmp(tmpfile.path, output_file)
+          configuration_changed = true
+        end
+      else
+        configuration_changed = true
+      end
+
+      if configuration_changed
+        if have_old_file
+          # Move away old file.
+          # Usability trick:
+          # rename to CMakeLists.txt.previous and not CMakeLists.previous.txt
+          # since grepping for all *.txt files would then hit these outdated ones.
+          V2C_Util_File.mv(output_file, output_file + ".previous")
+        end
+        # activate our version
+        # [for chmod() comments, see our $v2c_cmakelists_create_permissions settings variable]
+        V2C_Util_File.chmod($v2c_cmakelists_create_permissions, tmpfile.path)
+        V2C_Util_File.mv(tmpfile.path, output_file)
+
+        log_info %{\
+      Wrote #{output_file}
+      Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH
+      }
+      else
+        log_info "No settings changed, #{output_file} not updated."
+        # tmpfile will auto-delete when finalized...
+
+        # Some make dependency mechanisms might require touching (timestamping) the unchanged(!) file
+        # to indicate that it's up-to-date,
+        # however we won't do this here since it's not such a good idea.
+        # Any user who needs that should do a manual touch subsequently.
+      end
+    }
+  end
 end
 
 ################
@@ -1993,70 +2081,23 @@ arr_targets = Array.new
 arr_config_info = Array.new
 
 # Q&D parser switch...
+parser = nil
 if str_vcproj_filename.match(/.vcproj$/)
-  project_parse_vs7(vcproj_filename, arr_targets, arr_config_info)
+  parser = V2C_VS7ProjParser.new(vcproj_filename, arr_targets, arr_config_info)
 elsif str_vcproj_filename.match(/.vcxproj$/)
-  project_parse_vs10(vcproj_filename, arr_targets, arr_config_info)
+  parser = V2C_VS10ProjParser.new(vcproj_filename, arr_targets, arr_config_info)
 end
 
-# write into temporary file, to avoid corrupting previous CMakeLists.txt due to disk space or failure issues
-tmpfile = Tempfile.new('vcproj2cmake')
+parser.parse
 
-File.open(tmpfile.path, "w") { |out|
+orig_proj_file_basename = $p_vcproj.basename
 
-  # Wrong hierarchy, but currently I really don't care...
-  # (output file should be _created/handled_ within per-target handling)
-  arr_targets.each { |target|
-    project_generate_cmake(p_vcproj, out, target, $main_files, arr_config_info)
-  }
-
-  # Close file, since Fileutils.mv on an open file will barf on XP
-  out.close
-}
-
-# make sure to close that one as well...
-tmpfile.close
-
-# Since we're forced to fumble our source tree (a definite no-no in all other cases!)
-# by writing our CMakeLists.txt there, use a write-back-when-updated approach
-# to make sure we only write back the live CMakeLists.txt in case anything did change.
-# This is especially important in case of multiple concurrent builds on a shared
-# source on NFS mount.
-
-configuration_changed = false
-have_old_file = false
-if File.exists?(output_file)
-  have_old_file = true
-  if not V2C_Util_File.cmp(tmpfile.path, output_file)
-    configuration_changed = true
-  end
-else
-  configuration_changed = true
+generator = nil
+if true
+  generator = V2C_CMakeGenerator.new(orig_proj_file_basename, output_file, arr_targets, arr_config_info)
 end
 
-if configuration_changed
-  if have_old_file
-    # Move away old file.
-    # Usability trick:
-    # rename to CMakeLists.txt.previous and not CMakeLists.previous.txt
-    # since grepping for all *.txt files would then hit these outdated ones.
-    V2C_Util_File.mv(output_file, output_file + ".previous")
-  end
-  # activate our version
-  # [for chmod() comments, see our $v2c_cmakelists_create_permissions settings variable]
-  V2C_Util_File.chmod($v2c_cmakelists_create_permissions, tmpfile.path)
-  V2C_Util_File.mv(tmpfile.path, output_file)
-
-  log_info %{\
-Wrote #{output_file}
-Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH
-}
-else
-  log_info "No settings changed, #{output_file} not updated."
-  # tmpfile will auto-delete when finalized...
-
-  # Some make dependency mechanisms might require touching (timestamping) the unchanged(!) file
-  # to indicate that it's up-to-date,
-  # however we won't do this here since it's not such a good idea.
-  # Any user who needs that should do a manual touch subsequently.
+if not generator.nil?
+  generator.generate
 end
+
