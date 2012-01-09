@@ -363,9 +363,9 @@ def parse_platform_conversions(platform_defs, arr_defs, map_defs)
     if map_line.nil?
       # hmm, no direct match! Try to figure out whether any map entry
       # is a regex which would match our curr_defn
-      map_defs.each do |key, value|
-        if curr_defn =~ /^#{key}$/
-          log_debug "KEY: #{key} curr_defn #{curr_defn}"
+      map_defs.each do |key_regex, value|
+        if curr_defn =~ /^#{key_regex}$/
+          log_debug "KEY: #{key_regex} curr_defn #{curr_defn}"
           map_line = value
           break
         end

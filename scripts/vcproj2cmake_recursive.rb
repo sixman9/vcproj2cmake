@@ -63,7 +63,7 @@ Find.find('./') do
       # thus recreate the regex on each loop:
       excl_regex = "^\.\/#{excluded}$"
       #puts "MATCH: #{f} vs. #{excl_regex}"
-      if f =~ /#{excl_regex}/
+      if f.match(excl_regex)
         is_excluded = true
         break
       end
