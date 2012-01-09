@@ -575,6 +575,9 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
     indent_less()
     write_line(')')
   end
+  def write_command_single_line(cmake_command, cmake_command_args)
+    write_line("#{cmake_command}(#{cmake_command_args})")
+  end
 
   def write_block(block)
     block.split("\n").each { |line|
@@ -597,36 +600,48 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
   # WIN32, MSVC, ...
   def write_conditional_if(str_conditional)
     if not str_conditional.nil?
-      write_line("if(#{str_conditional})")
+      write_command_single_line('if', str_conditional)
       indent_more()
     end
   end
   def write_conditional_else(str_conditional)
     if not str_conditional.nil?
       indent_less()
-      write_line("else(#{str_conditional})")
+      write_command_single_line('else', str_conditional)
       indent_more()
     end
   end
   def write_conditional_end(str_conditional)
     if not str_conditional.nil?
       indent_less()
-      write_line("endif(#{str_conditional})")
+      write_command_single_line('endif', str_conditional)
     end
   end
   def get_keyword_bool(setting)
     return setting ? 'true' : 'false'
   end
-  def write_var_bool(var_name, setting)
-    str_setting = get_keyword_bool(setting)
-    write_line("set(#{var_name} #{str_setting})")
+  def write_set_var(var_name, setting)
+    str_args = "#{var_name} #{setting}"
+    write_command_single_line('set', str_args)
   end
-  def write_var_bool_conditional(var_name, str_condition)
+  def write_set_var_bool(var_name, setting)
+    write_set_var(var_name, get_keyword_bool(setting))
+  end
+  def write_set_var_bool_conditional(var_name, str_condition)
     write_conditional_if(str_condition)
-      write_var_bool(var_name, true)
+      write_set_var_bool(var_name, true)
     write_conditional_else(str_condition)
-      write_var_bool(var_name, false)
+      write_set_var_bool(var_name, false)
     write_conditional_end(str_condition)
+  end
+  def write_include(include_file_args)
+    write_command_single_line('include', include_file_args)
+  end
+  def write_include_optional(include_file)
+    # FIXME: should apply quoting (as needed) to include_file _here_
+    # since this is the best place to do it...
+    include_file_optional = include_file + ' OPTIONAL'
+    write_include(include_file_optional)
   end
   def write_vcproj2cmake_func_comment()
     write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{$vcproj2cmake_func_cmake}")
@@ -639,7 +654,8 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
       if not comment.nil?
         write_comment_at_level(3, comment)
       end
-      write_line("cmake_policy(SET #{str_policy} #{str_OLD_NEW})")
+      str_set_policy = "SET #{str_policy} #{str_OLD_NEW}"
+      write_command_single_line('cmake_policy', str_set_policy)
     write_conditional_end(str_conditional)
   end
 end
@@ -657,7 +673,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_project(project_name)
     # TODO: figure out language type (C CXX etc.) and add it to project() command
-    write_new_line("project(#{project_name})")
+    write_command_single_line('project', project_name)
   end
   def put_cmake_mfc_atl_flag(config_info)
     # Hmm, do we need to actively _reset_ CMAKE_MFC_FLAG / CMAKE_ATL_FLAG
@@ -671,14 +687,14 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     #   http://www.mail-archive.com/cmake@cmake.org/msg38677.html
 
     #if config_info.use_of_mfc > 0
-      write_new_line("set(CMAKE_MFC_FLAG #{config_info.use_of_mfc})")
+      write_set_var('CMAKE_MFC_FLAG', config_info.use_of_mfc)
     #end
     # ok, there's no CMAKE_ATL_FLAG yet, AFAIK, but still prepare
     # for it (also to let people probe on this in hook includes)
     #if config_info.use_of_atl > 0
       # TODO: should also set the per-configuration-type variable variant
       #write_new_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
-      write_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
+      write_set_var('CMAKE_ATL_FLAG', config_info.use_of_atl)
     #end
   end
   def put_hook_pre
@@ -686,7 +702,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # to skip the entire build of this file on certain platforms:
     # if(PLATFORM) message(STATUS "not supported") return() ...
     # (note that we appended CMAKE_MODULE_PATH _prior_ to this include()!)
-    write_new_line("include(\"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt\" OPTIONAL)")
+    write_include_optional('"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt"')
   end
   def put_hook_project
     write_comment_at_level(2, \
@@ -694,7 +710,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
 	"the _LIBRARIES / _INCLUDE_DIRS mappings created\n" \
 	"by your include/dependency map files." \
     )
-    write_line("include(\"${V2C_HOOK_PROJECT}\" OPTIONAL)")
+    write_include_optional('"${V2C_HOOK_PROJECT}"')
   end
   def put_hook_post_definitions
     write_empty_line()
@@ -702,17 +718,17 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
 	"hook include after all definitions have been made\n" \
 	"(but _before_ target is created using the source list!)" \
     )
-    write_line("include(\"${V2C_HOOK_POST_DEFINITIONS}\" OPTIONAL)")
+    write_include_optional('"${V2C_HOOK_POST_DEFINITIONS}"')
   end
   def put_hook_post_sources
-    write_new_line("include(\"${V2C_HOOK_POST_SOURCES}\" OPTIONAL)")
+    write_include_optional('"${V2C_HOOK_POST_SOURCES}"')
   end
   def put_hook_post_target
     write_empty_line()
     write_comment_at_level(1, \
       "e.g. to be used for tweaking target properties etc." \
     )
-    write_line("include(\"${V2C_HOOK_POST_TARGET}\" OPTIONAL)")
+    write_include_optional('"${V2C_HOOK_POST_TARGET}"')
   end
   def put_include_project_source_dir
     # AFAIK .vcproj implicitly adds the project root to standard include path
@@ -722,7 +738,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_configuration_types(configuration_types)
     configuration_types_list = cmake_separate_arguments(configuration_types)
-    write_line("set(CMAKE_CONFIGURATION_TYPES \"#{configuration_types_list}\")" )
+    write_set_var('CMAKE_CONFIGURATION_TYPES', "\"#{configuration_types_list}\"")
   end
   def put_var_converter_script_location(script_location_relative_to_master)
     # For the CMakeLists.txt rebuilder (automatic rebuild on file changes),
@@ -738,7 +754,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
       # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
       # (this provision should even enable people to manually relocate
       # an entire sub project within the source tree).
-      write_line("set(V2C_SCRIPT_LOCATION \"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\")")
+      write_set_var('V2C_SCRIPT_LOCATION', "\"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\"")
     write_conditional_end(str_conditional)
   end
 
@@ -768,7 +784,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
       )
     end
     # (side note: see "ldd -u -r" on Linux for superfluous link parts potentially caused by this!)
-    write_line("include(MasterProjectDefaults_vcproj2cmake OPTIONAL)")
+    write_include_optional('MasterProjectDefaults_vcproj2cmake')
   end
 
   private
@@ -792,7 +808,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     write_comment_at_level(1, \
       ">= 2.6 due to crucial set_property(... COMPILE_DEFINITIONS_* ...)" \
     )
-    write_line('cmake_minimum_required(VERSION 2.6)')
+    write_command_single_line('cmake_minimum_required', 'VERSION 2.6')
   end
   def put_file_header_cmake_policies
     str_conditional = 'COMMAND cmake_policy'
@@ -816,14 +832,15 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # be within the project tree as well, since someone might want to copy the entire project tree
     # including .vcproj conversions to a different machine, thus all v2c components should be available)
     #write_new_line("set(V2C_MASTER_PROJECT_DIR \"#{$master_project_dir}\")")
-    write_new_line("set(V2C_MASTER_PROJECT_DIR \"${CMAKE_SOURCE_DIR}\")")
+    write_empty_line()
+    write_set_var('V2C_MASTER_PROJECT_DIR', '"${CMAKE_SOURCE_DIR}"')
     # NOTE: use set() instead of list(APPEND...) to _prepend_ path
     # (otherwise not able to provide proper _overrides_)
-    write_line("set(CMAKE_MODULE_PATH \"${V2C_MASTER_PROJECT_DIR}/#{$v2c_module_path_local}\" ${CMAKE_MODULE_PATH})")
+    write_set_var('CMAKE_MODULE_PATH', "\"${V2C_MASTER_PROJECT_DIR}/#{$v2c_module_path_local}\" ${CMAKE_MODULE_PATH}")
   end
   def put_var_config_dir_local
     # "export" our internal $v2c_config_dir_local variable (to be able to reference it in CMake scripts as well)
-    write_new_line("set(V2C_CONFIG_DIR_LOCAL \"#{$v2c_config_dir_local}\")")
+    write_set_var('V2C_CONFIG_DIR_LOCAL', "\"#{$v2c_config_dir_local}\"")
   end
   def put_include_vcproj2cmake_func
     write_empty_line()
@@ -831,7 +848,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
       "include the main file for pre-defined vcproj2cmake helper functions\n" \
       "This module will also include the configuration settings definitions module" \
     )
-    write_line('include(vcproj2cmake_func)')
+    write_include('vcproj2cmake_func')
   end
 end
 
@@ -939,7 +956,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # on the Win32 side (.vcproj in general).
     str_platform = 'WIN32'
     write_conditional_if(str_platform)
-      write_line("set_property(DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{attr_opts})")
+      write_command_single_line('set_property', "DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{attr_opts}")
     write_conditional_end(str_platform)
   end
   # FIXME private!
@@ -1028,7 +1045,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       write_command_quoted_list('set', "#{source_files_variable}", arr_local_sources)
       # create source_group() of our local files
       if not parent_source_group.nil?
-        write_line("source_group(\"#{this_source_group}\" FILES ${#{source_files_variable}})")
+        write_command_single_line('source_group', "\"#{this_source_group}\" FILES ${#{source_files_variable}}")
       end
     end
     if not source_files_variable.nil? or not arr_my_sub_sources.empty?
@@ -1059,16 +1076,18 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_line(')')
   end
   def write_target_executable
-    write_new_line("add_executable(#{@target.name} WIN32 ${SOURCES})")
+    write_command_single_line('add_executable', "#{@target.name} WIN32 ${SOURCES}")
   end
 
   def write_target_library_dynamic
-    write_new_line("add_library(#{@target.name} SHARED ${SOURCES})")
+    write_empty_line()
+    write_command_single_line('add_library', "#{@target.name} SHARED ${SOURCES}")
   end
 
   def write_target_library_static
     #write_new_line("add_library_vcproj2cmake( #{target.name} STATIC ${SOURCES} )")
-    write_new_line("add_library(#{@target.name} STATIC ${SOURCES})")
+    write_empty_line()
+    write_command_single_line('add_library', "#{@target.name} STATIC ${SOURCES}")
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
       write_conditional_if(str_platform)
@@ -1183,7 +1202,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
 
   def set_property(target, property, value)
-    write_line("set_property(TARGET #{target} PROPERTY #{property} \"#{value}\")")
+    write_command_single_line('set_property', "TARGET #{target} PROPERTY #{property} \"#{value}\"")
   end
 end
 
@@ -1884,8 +1903,8 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
       ## sub projects will inherit, and we _don't_ want that...
       # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
       #syntax_generator.write_line('# reset project-local variables')
-      #syntax_generator.write_line('set( V2C_LIBS )')
-      #syntax_generator.write_line('set( V2C_SOURCES )')
+      #syntax_generator.write_set_var('V2C_LIBS', '')
+      #syntax_generator.write_set_var('V2C_SOURCES', '')
 
       global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
 
@@ -1920,7 +1939,7 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
 	end
 	var_v2c_want_buildcfg_curr = "v2c_want_buildcfg_#{config_info_curr.name}"
-	syntax_generator.write_var_bool_conditional(var_v2c_want_buildcfg_curr, build_type_condition)
+	syntax_generator.write_set_var_bool_conditional(var_v2c_want_buildcfg_curr, build_type_condition)
       }
 
       arr_config_info.each { |config_info_curr|
