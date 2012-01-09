@@ -66,3 +66,5 @@ function(v2c_scripts_convert_project_recursive _proj_source_root)
   )
   add_custom_target(convert_source_root_recursive DEPENDS "${conversion_stamp}")
 endfunction(v2c_scripts_convert_project_recursive _proj_source_root)
+
+add_subdirectory(v2c_plugins)
