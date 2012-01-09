@@ -1,8 +1,9 @@
 #!/usr/bin/env ruby
 
-# Given a Visual Studio project, create a CMakeLists.txt file which optionally
-# allows for ongoing side-by-side operation (e.g. on Linux, Mac)
-# together with the existing static .vcproj project on the Windows side.
+# Given a Visual Studio project (.vcproj, .vcxproj),
+# create a CMakeLists.txt file which optionally allows
+# for ongoing side-by-side operation (e.g. on Linux, Mac)
+# together with the existing static .vc[x]proj project on the Windows side.
 # Provides good support for simple DLL/Static/Executable projects,
 # but custom build steps and build events are currently ignored.
 
