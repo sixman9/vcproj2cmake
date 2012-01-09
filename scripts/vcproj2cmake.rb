@@ -520,10 +520,15 @@ $v2c_attribute_not_provided_marker = "V2C_NOT_PROVIDED"
 $cmake_var_match_regex = "\\$\\{[[:alnum:]_]+\\}"
 $cmake_env_var_match_regex = "\\$ENV\\{[[:alnum:]_]+\\}"
 
+# Since we have several instances of the generator syntax base class,
+# we cannot have indent_now as class member since we'd have multiple
+# disconnected instances... (TODO: implement it as class-static member
+# variable?)
+$indent_now = $v2c_generator_indent_num_spaces
+
 # Contains functionality common to _any_ file-based generator
 class V2C_TextFileSyntaxGeneratorBase
   def initialize
-    @indent_now = $v2c_generator_indent_num_spaces
     @indent_step = $v2c_generator_indent_step
     @comments_level = $v2c_generated_comments_level
   end
@@ -533,14 +538,14 @@ class V2C_TextFileSyntaxGeneratorBase
   end
 
   def get_indent
-    return @indent_now
+    return $indent_now
   end
 
   def indent_more
-    @indent_now += @indent_step
+    $indent_now += @indent_step
   end
   def indent_less
-    @indent_now -= @indent_step
+    $indent_now -= @indent_step
   end
 end
 
