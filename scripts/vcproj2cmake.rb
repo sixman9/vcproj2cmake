@@ -514,10 +514,6 @@ class V2C_BaseGlobalGenerator
 end
 
 
-### internal CMake generator helpers ###
-$vcproj2cmake_func_cmake = 'vcproj2cmake_func.cmake'
-$v2c_attribute_not_provided_marker = 'V2C_NOT_PROVIDED'
-
 $cmake_var_match_regex = '\\$\\{[[:alnum:]_]+\\}'
 $cmake_env_var_match_regex = '\\$ENV\\{[[:alnum:]_]+\\}'
 
@@ -532,6 +528,10 @@ class V2C_TextFileSyntaxGeneratorBase
   def initialize
     @indent_step = $v2c_generator_indent_step
     @comments_level = $v2c_generated_comments_level
+
+    # internal CMake generator helpers
+    @vcproj2cmake_func_cmake = 'vcproj2cmake_func.cmake'
+    @v2c_attribute_not_provided_marker = 'V2C_NOT_PROVIDED'
   end
 
   def generated_comments_level
@@ -570,7 +570,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
     write_line("#{cmake_command}(#{cmake_command_arg}")
     indent_more()
       arr_elems.each do |curr_value|
-        curr_value_quot = cmake_element_handle_quoting(curr_value)
+        curr_value_quot = element_handle_quoting(curr_value)
         write_line("#{curr_value_quot}")
       end
     indent_less()
@@ -645,7 +645,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
     write_include(include_file_optional)
   end
   def write_vcproj2cmake_func_comment()
-    write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{$vcproj2cmake_func_cmake}")
+    write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{@vcproj2cmake_func_cmake}")
   end
   def write_cmake_policy(policy_num, set_to_new, comment)
     str_policy = '%s%04d' % [ 'CMP', policy_num ]
@@ -658,6 +658,62 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
       str_set_policy = "SET #{str_policy} #{str_OLD_NEW}"
       write_command_single_line('cmake_policy', str_set_policy)
     write_conditional_end(str_conditional)
+  end
+
+  # analogous to CMake separate_arguments() command
+  def separate_arguments(array_in)
+    array_in.join(';')
+  end
+
+  private
+
+  # (un)quote strings as needed
+  #
+  # Once we added a variable in the string,
+  # we definitely _need_ to have the resulting full string quoted
+  # in the generated file, otherwise we won't obey
+  # CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
+  # However, there is a strong argument to be made for applying the quotes
+  # on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
+  # that such strings need quoting.
+  def element_handle_quoting(elem)
+    # Determine whether quoting needed
+    # (in case of whitespace or variable content):
+    #if elem.match(/\s|#{$cmake_var_match_regex}|#{$cmake_env_var_match_regex}/)
+    # Hrmm, turns out that variables better should _not_ be quoted.
+    # But what we _do_ need to quote is regular strings which include
+    # whitespace characters, i.e. check for alphanumeric char following
+    # whitespace or the other way around.
+    # Quoting rules seem terribly confusing, will need to revisit things
+    # to get it all precisely correct.
+    # For details, see "Quoting" http://www.itk.org/Wiki/CMake/Language_Syntax
+    needs_quoting = false
+    has_quotes = false
+    # "contains at least one whitespace character,
+    # and then prefixed or followed by any non-whitespace char value"
+    # Well, that's not enough - consider a concatenation of variables
+    # such as
+    # ${v1} ${v2}
+    # which should NOT be quoted (whereas ${v1} ascii ${v2} should!).
+    # As a bandaid to detect variable syntax, make sure to skip
+    # closing bracket/dollar sign as well.
+    if elem.match(/[^\}\s]\s|\s[^\s\$]/)
+      needs_quoting = true
+    end
+    if elem.match(/".*"/)
+      has_quotes = true
+    end
+    #puts "QUOTING: elem #{elem} needs_quoting #{needs_quoting} has_quotes #{has_quotes}"
+    if needs_quoting and not has_quotes
+      #puts 'QUOTING: do quote!'
+      return "\"#{elem}\""
+    end
+    if not needs_quoting and has_quotes
+      #puts 'QUOTING: do UNquoting!'
+      return elem.gsub(/"(.*)"/, '\1')
+    end
+      #puts 'QUOTING: do no changes!'
+    return elem
   end
 end
 
@@ -735,10 +791,11 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # AFAIK .vcproj implicitly adds the project root to standard include path
     # (for automatic stdafx.h resolution etc.), thus add this
     # (and make sure to add it with high priority, i.e. use BEFORE).
-    write_new_line("include_directories(BEFORE \"${PROJECT_SOURCE_DIR}\")")
+    write_empty_line()
+    write_command_single_line('include_directories', 'BEFORE "${PROJECT_SOURCE_DIR}"')
   end
   def put_configuration_types(configuration_types)
-    configuration_types_list = cmake_separate_arguments(configuration_types)
+    configuration_types_list = separate_arguments(configuration_types)
     write_set_var('CMAKE_CONFIGURATION_TYPES', "\"#{configuration_types_list}\"")
   end
   def put_var_converter_script_location(script_location_relative_to_master)
@@ -853,60 +910,6 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   end
 end
 
-# analogous to CMake separate_arguments() command
-def cmake_separate_arguments(array_in)
-  array_in.join(';')
-end
-
-# (un)quote strings as needed
-#
-# Once we added a variable in the string,
-# we definitely _need_ to have the resulting full string quoted
-# in the generated file, otherwise we won't obey
-# CMake filesystem whitespace requirements! (string _variables_ _need_ quoting)
-# However, there is a strong argument to be made for applying the quotes
-# on the _generator_ and not _parser_ side, since it's a CMake syntax attribute
-# that such strings need quoting.
-def cmake_element_handle_quoting(elem)
-  # Determine whether quoting needed
-  # (in case of whitespace or variable content):
-  #if elem.match(/\s|#{$cmake_var_match_regex}|#{$cmake_env_var_match_regex}/)
-  # Hrmm, turns out that variables better should _not_ be quoted.
-  # But what we _do_ need to quote is regular strings which include
-  # whitespace characters, i.e. check for alphanumeric char following
-  # whitespace or the other way around.
-  # Quoting rules seem terribly confusing, will need to revisit things
-  # to get it all precisely correct.
-  # For details, see "Quoting" http://www.itk.org/Wiki/CMake/Language_Syntax
-  needs_quoting = false
-  has_quotes = false
-  # "contains at least one whitespace character,
-  # and then prefixed or followed by any non-whitespace char value"
-  # Well, that's not enough - consider a concatenation of variables
-  # such as
-  # ${v1} ${v2}
-  # which should NOT be quoted (whereas ${v1} ascii ${v2} should!).
-  # As a bandaid to detect variable syntax, make sure to skip
-  # closing bracket/dollar sign as well.
-  if elem.match(/[^\}\s]\s|\s[^\s\$]/)
-    needs_quoting = true
-  end
-  if elem.match(/".*"/)
-    has_quotes = true
-  end
-  #puts "QUOTING: elem #{elem} needs_quoting #{needs_quoting} has_quotes #{has_quotes}"
-  if needs_quoting and not has_quotes
-    #puts 'QUOTING: do quote!'
-    return "\"#{elem}\""
-  end
-  if not needs_quoting and has_quotes
-    #puts 'QUOTING: do UNquoting!'
-    return elem.gsub(/"(.*)"/, '\1')
-  end
-    #puts 'QUOTING: do no changes!'
-  return elem
-end
-
 class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   def initialize(out)
     # FIXME: handle arr_config_var_handling appropriately
@@ -984,7 +987,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # _internally_.
     write_vcproj2cmake_func_comment()
     if project_keyword.nil?
-	project_keyword = "#{$v2c_attribute_not_provided_marker}"
+	project_keyword = "#{@v2c_attribute_not_provided_marker}"
     end
     write_line("v2c_post_setup(#{project_name}")
     indent_more()
