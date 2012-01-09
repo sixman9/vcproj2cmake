@@ -59,12 +59,14 @@
 require 'tempfile'
 require 'pathname'
 require 'rexml/document'
-#require 'find' # Find.find()
+require 'find' # Find.find()
 
 # http://devblog.vworkapp.com/post/910714976/best-practice-for-rubys-require
 
-$LOAD_PATH.unshift(File.dirname(__FILE__) + '/.') unless $LOAD_PATH.include?(File.dirname(__FILE__) + '/.')
-$LOAD_PATH.unshift(File.dirname(__FILE__) + '/./lib') unless $LOAD_PATH.include?(File.dirname(__FILE__) + '/./lib')
+script_dir = File.dirname(__FILE__)
+
+$LOAD_PATH.unshift(script_dir + '/.') unless $LOAD_PATH.include?(script_dir + '/.')
+$LOAD_PATH.unshift(script_dir + '/./lib') unless $LOAD_PATH.include?(script_dir + '/./lib')
 
 require 'vcproj2cmake/util_file' # V2C_Util_File.cmp()
 
@@ -75,46 +77,77 @@ load 'vcproj2cmake_settings.rb'
 ### USER-CONFIGURABLE SECTION ###
 
 # global variable to indicate whether we want debug output or not
-$debug = true
+$v2c_debug = false
 
 # Initial number of spaces for indenting
-$indent_num_spaces = 0
+$v2c_generator_indent_num_spaces = 0
 
 # Number of spaces to increment by
-$indent_step = 2
+$v2c_generator_indent_step = 2
 
 ### USER-CONFIGURABLE SECTION END ###
 
+script_name = $0
 
+script_location = File.expand_path(script_name)
+p_script = Pathname.new(script_location)
 
+# At least currently, this is a custom plugin mechanism.
+# It doesn't have anything to do with e.g.
+# Ruby on Rails Plugins, which is described by
+# "15 Rails mit Plug-ins erweitern"
+#   http://openbook.galileocomputing.de/ruby_on_rails/ruby_on_rails_15_001.htm
 
-#Find.find('./plugins/vcproj2cmake_parser_*.rb') do
-#  |plugin_parser|
-#
-#  load plugin_parser
-#
-#  # register project file extension name in plugin manager array, ...
-#end
+$arr_plugin_parser = Array.new
 
-arr_plugin_parser = Array.new
+class V2C_Core_Plugin_Info
+  def initialize
+    @version = 0 # plugin API version that this plugin supports
+  end
+  attr_accessor :version
+end
 
-Plugin_Parser_str = Struct.new(:parser_name, :extension_name)
+class V2C_Core_Plugin_Info_Parser < V2C_Core_Plugin_Info
+  def initialize
+    @parser_name = nil
+    @extension_name = nil
+  end
+  attr_accessor :parser_name
+  attr_accessor :extension_name
+end
+
+def V2C_Core_Add_Plugin_Parser(plugin_parser)
+  if plugin_parser.version == 1
+    $arr_plugin_parser.push(plugin_parser)
+    puts "registered parser plugin #{plugin_parser.parser_name} (.#{plugin_parser.extension_name})"
+    return true
+  else
+    puts "parser plugin #{plugin_parser.parser_name} indicates wrong version #{plugin_parser.version}"
+    return false
+  end
+end
+
+# Use specially named "v2c_plugins" dir to avoid any resemblance/clash
+# with standard Ruby on Rails plugins mechanism.
+v2c_plugin_dir = "#{script_dir}/v2c_plugins"
+
+Find.find(v2c_plugin_dir) { |f_plugin|
+  if f_plugin =~ /v2c_(parser|generator)_.*\.rb$/
+    puts "loading plugin #{f_plugin}!"
+    load f_plugin
+  end
+  # register project file extension name in plugin manager array, ...
+}
 
 # TODO: to be automatically filled in from parser plugins
 
-str_plugin_parser_vs7 = Plugin_Parser_str.new
+plugin_parser_vs10 = V2C_Core_Plugin_Info_Parser.new
 
-str_plugin_parser_vs7[:parser_name] = "Visual Studio 7+"
-str_plugin_parser_vs7[:extension_name] = "vcproj"
+plugin_parser_vs10.version = 1
+plugin_parser_vs10.parser_name = 'Visual Studio 10'
+plugin_parser_vs10.extension_name = 'vcxproj'
 
-arr_plugin_parser.push(str_plugin_parser_vs7)
-
-str_plugin_parser_vs10 = Plugin_Parser_str.new
-
-str_plugin_parser_vs10[:parser_name] = "Visual Studio 10"
-str_plugin_parser_vs10[:extension_name] = "vcxproj"
-
-arr_plugin_parser.push(str_plugin_parser_vs10)
+V2C_Core_Add_Plugin_Parser(plugin_parser_vs10)
 
 
 # Usage: vcproj2cmake.rb <input.vc[x]proj> [<output CMakeLists.txt>] [<master project directory>]
@@ -123,8 +156,6 @@ arr_plugin_parser.push(str_plugin_parser_vs10)
 # Check for command-line input errors
 # -----------------------------------
 cl_error = ""
-
-script_name = $0
 
 vcproj_filename = nil
 
@@ -140,9 +171,9 @@ else
    # TODO: add a version check to conditionally skip this cleanup effort?
    vcproj_filename_full = Pathname.new(str_vcproj_filename).cleanpath
 
-   arr_plugin_parser.each { |str_plugin_parser_curr|
+   $arr_plugin_parser.each { |plugin_parser_curr|
      vcproj_filename_test = vcproj_filename_full.clone
-     parser_extension = ".#{str_plugin_parser_curr[:extension_name]}"
+     parser_extension = ".#{plugin_parser_curr.extension_name}"
      if File.extname(vcproj_filename_test) == parser_extension
        vcproj_filename = vcproj_filename_test
        break
@@ -163,8 +194,8 @@ end
 
 if vcproj_filename.nil?
   str_parser_descrs = ""
-  arr_plugin_parser.each { |str_plugin_parser_named|
-    str_parser_descr_elem = ".#{str_plugin_parser_named[:extension_name]} [#{str_plugin_parser_named[:parser_name]}]"
+  $arr_plugin_parser.each { |plugin_parser_named|
+    str_parser_descr_elem = ".#{plugin_parser_named.extension_name} [#{plugin_parser_named.parser_name}]"
     str_parser_descrs += str_parser_descr_elem + ", "
   }
   cl_error = "*** The first argument must be the project name / file (supported parsers: #{str_parser_descrs})\n"
@@ -238,33 +269,11 @@ $project_dir = $p_vcproj.dirname
 #p_cmakelists_dir = Pathname.new(cmakelists_dir)
 #p_cmakelists_dir.relative_path_from(...)
 
-script_location = File.expand_path(script_name)
-p_script = Pathname.new(script_location)
 $script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
 #puts "p_script #{p_script} | p_master_proj #{p_master_proj} | $script_location_relative_to_master #{$script_location_relative_to_master}"
 
-# monster HACK: set a global variable, since we need to be able
-# to tell whether we're able to build a target
-# (i.e. whether we have any build units i.e.
-# implementation files / non-header files),
-# otherwise we should not add a target since CMake will
-# complain with "Cannot determine link language for target "xxx"".
-$have_build_units = false
-
-
-
-$indent_now = $indent_num_spaces
-
-def cmake_indent_more
-  $indent_now += $indent_step
-end
-
-def cmake_indent_less
-  $indent_now -= $indent_step
-end
-
 def log_debug(str)
-  if $debug
+  if $v2c_debug
     puts str
   end
 end
@@ -466,6 +475,13 @@ class V2C_Target
     @version = nil
     @vs_keyword = nil
     @scc_info = V2C_SCC_Info.new
+    # semi-HACK: we need this variable, since we need to be able
+    # to tell whether we're able to build a target
+    # (i.e. whether we have any build units i.e.
+    # implementation files / non-header files),
+    # otherwise we should not add a target since CMake will
+    # complain with "Cannot determine link language for target "xxx"".
+    @have_build_units = false
   end
 
   attr_accessor :type
@@ -475,6 +491,7 @@ class V2C_Target
   attr_accessor :version
   attr_accessor :vs_keyword
   attr_accessor :scc_info
+  attr_accessor :have_build_units
 end
 
 class V2C_BaseGlobalGenerator
@@ -503,13 +520,34 @@ $v2c_attribute_not_provided_marker = "V2C_NOT_PROVIDED"
 $cmake_var_match_regex = "\\$\\{[[:alnum:]_]+\\}"
 $cmake_env_var_match_regex = "\\$ENV\\{[[:alnum:]_]+\\}"
 
-class V2C_CMakeSyntaxGenerator
-  def initialize(out)
-    @out = out
+# Contains functionality common to _any_ file-based generator
+class V2C_TextFileSyntaxGeneratorBase
+  def initialize
+    @indent_now = $v2c_generator_indent_num_spaces
+    @indent_step = $v2c_generator_indent_step
+    @comments_level = $v2c_generated_comments_level
   end
 
   def generated_comments_level
-    return $v2c_generated_comments_level
+    return @comments_level
+  end
+
+  def get_indent
+    return @indent_now
+  end
+
+  def indent_more
+    @indent_now += @indent_step
+  end
+  def indent_less
+    @indent_now -= @indent_step
+  end
+end
+
+class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
+  def initialize(out)
+    super()
+    @out = out
   end
 
   def write_comment_at_level(level, block)
@@ -524,12 +562,12 @@ class V2C_CMakeSyntaxGenerator
       cmake_command_arg = ""
     end
     write_line("#{cmake_command}(#{cmake_command_arg}")
-    cmake_indent_more()
+    indent_more()
       arr_elems.each do |curr_value|
         curr_value_quot = cmake_element_handle_quoting(curr_value)
         write_line("#{curr_value_quot}")
       end
-    cmake_indent_less()
+    indent_less()
     write_line(")")
   end
 
@@ -539,7 +577,7 @@ class V2C_CMakeSyntaxGenerator
     }
   end
   def write_line(part)
-    @out.print ' ' * $indent_now
+    @out.print ' ' * get_indent()
     @out.puts part
   end
 
@@ -555,19 +593,19 @@ class V2C_CMakeSyntaxGenerator
   def write_conditional_if(str_conditional)
     if not str_conditional.nil?
       write_line("if(#{str_conditional})")
-      cmake_indent_more()
+      indent_more()
     end
   end
   def write_conditional_else(str_conditional)
     if not str_conditional.nil?
-      cmake_indent_less()
+      indent_less()
       write_line("else(#{str_conditional})")
-      cmake_indent_more()
+      indent_more()
     end
   end
   def write_conditional_end(str_conditional)
     if not str_conditional.nil?
-      cmake_indent_less()
+      indent_less()
       write_line("endif(#{str_conditional})")
     end
   end
@@ -926,13 +964,13 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
 	project_keyword = "#{$v2c_attribute_not_provided_marker}"
     end
     write_line("v2c_post_setup(#{project_name}")
-    cmake_indent_more()
+    indent_more()
       write_block( \
         "\"#{project_name}\" \"#{project_keyword}\"\n" \
         "\"${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}\"\n" \
         "\"${CMAKE_CURRENT_LIST_FILE}\"" \
       )
-    cmake_indent_less()
+    indent_less()
     write_line(")")
   end
 end
@@ -969,12 +1007,12 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # process sub-filters, have their main source variable added to arr_my_sub_sources
     arr_my_sub_sources = Array.new
     if not arr_sub_filters.nil?
-      cmake_indent_more()
+      indent_more()
         arr_sub_filters.each { |subfilter|
           #log_info "writing: #{subfilter}"
           put_file_list(project_name, subfilter, this_source_group, arr_my_sub_sources)
         }
-      cmake_indent_less()
+      indent_less()
     end
   
     group_tag = this_source_group.clone.gsub(/( |\\)/,'_')
@@ -991,7 +1029,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     if not source_files_variable.nil? or not arr_my_sub_sources.empty?
       sources_variable = "SOURCES_#{group_tag}"
       write_new_line("set(SOURCES_#{group_tag}")
-      cmake_indent_more()
+      indent_more()
         # dump sub filters...
         arr_my_sub_sources.each { |source|
           write_line("${#{source}}")
@@ -1000,7 +1038,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
         if not source_files_variable.nil?
           write_line("${#{source_files_variable}}")
         end
-      cmake_indent_less()
+      indent_less()
       write_line(")")
       # add our source list variable to parent return
       arr_sub_sources_for_parent.push(sources_variable)
@@ -1008,11 +1046,11 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
   def put_sources(arr_sub_sources)
     write_new_line("set(SOURCES")
-    cmake_indent_more()
+    indent_more()
       arr_sub_sources.each { |source_item|
         write_line("${#{source_item}}")
       }
-    cmake_indent_less()
+    indent_less()
     write_line(")")
   end
   def write_target_executable
@@ -1031,7 +1069,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       write_conditional_if(str_platform)
         # make sure to specify APPEND for greater flexibility (hooks etc.)
         write_line("set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper}")
-        cmake_indent_more()
+        indent_more()
           # FIXME: we should probably get rid of sort() here (and elsewhere),
           # but for now we'll keep it, to retain identically generated files.
           arr_platdefs.sort.each do |compile_defn|
@@ -1042,7 +1080,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
             end
             write_line(compile_defn)
           end
-        cmake_indent_less()
+        indent_less()
         write_line(")")
       write_conditional_end(str_platform)
   end
@@ -1078,11 +1116,11 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_empty_line()
     write_conditional_if(str_conditional)
       write_line("set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}")
-      cmake_indent_more()
+      indent_more()
         arr_flags.each do |compile_flag|
           write_line(compile_flag)
         end
-      cmake_indent_less()
+      indent_less()
       write_line(")")
     write_conditional_end(str_conditional)
   end
@@ -1495,15 +1533,17 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
 
       project_parser.parse
 
-      $have_build_units = false
-
       configuration_types = Array.new
       vs7_get_configuration_types(project_xml, configuration_types)
+
+      $have_build_units = false
 
       $main_files = Files_str.new
       project_xml.elements.each("Files") { |files_xml|
       	vs7_parse_file_list(target.name, files_xml, $main_files)
       }
+
+      target.have_build_units = $have_build_units
 
       # ARGH, we have an issue with CMake not being fully up to speed with
       # multi-configuration generators (e.g. .vcproj):
@@ -1588,7 +1628,7 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
         }
 
         #if not arr_sub_sources.empty?
-        if $have_build_units
+        if target.have_build_units
 	  # parse linker configuration...
           config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
 	    linker_info_curr = V2C_Linker_Info.new
@@ -1895,7 +1935,7 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
         #if not arr_sub_sources.empty?
-        if $have_build_units
+        if target.have_build_units
 
           # first add source reference, then do linker setup, then create target
 
@@ -2057,9 +2097,9 @@ class V2C_CMakeGenerator
         V2C_Util_File.mv(tmpfile.path, output_file)
 
         log_info %{\
-      Wrote #{output_file}
-      Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH
-      }
+Wrote #{output_file}
+Finished. You should make sure to have all important v2c settings includes such as vcproj2cmake_defs.cmake somewhere in your CMAKE_MODULE_PATH
+}
       else
         log_info "No settings changed, #{output_file} not updated."
         # tmpfile will auto-delete when finalized...
