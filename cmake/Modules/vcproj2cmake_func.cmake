@@ -227,6 +227,10 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     # build and _then_ have an additional full build, which wastes
     # valuable seconds for each build of any single file within the
     # project.
+    # Unfortunately for certain generators/environments (e.g. "Visual Studio 8 2005")
+    # there's no dedicated build script which oversees that two-stage build process,
+    # but rather execution of "all" targets; this then leads to a _partial_ abort
+    # in the CMakeLists.txt update part, yet other build activity continues for a while.
 
     # FIXME: should use that V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD conditional
     # to establish (during one-time setup) a _dummy/non-dummy_ _function_ for rebuild abort handling.
