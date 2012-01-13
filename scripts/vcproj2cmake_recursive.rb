@@ -30,10 +30,13 @@ time_cmake_root_folder = File.stat($v2c_config_dir_local).mtime.to_i
 excluded_projects = "#{$v2c_config_dir_local}/project_exclude_list.txt"
 if File.exist?(excluded_projects)
   f_excl = File.new(excluded_projects, 'r')
-  f_excl.each do |line|
+  f_excl.each do |line_raw|
+    exclude_expr, comment = line_raw.chomp.split(/#/)
+    #puts "exclude_expr is #{exclude_expr}"
+    next if exclude_expr.empty?
     # TODO: we probably need a per-platform implementation,
     # since exclusion is most likely per-platform after all
-    arr_excl_proj.push(line.chomp)
+    arr_excl_proj.push(exclude_expr)
   end
   f_excl.close
 end
