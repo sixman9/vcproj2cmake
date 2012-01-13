@@ -428,7 +428,7 @@ end
 
 class V2C_Config_Info
   def initialize
-    @name = 0
+    @name = 0 # WARNING: it may contain spaces!
     @platform = 0 # FIXME: not yet supported by VS7 parser!
     @type = 0
     @use_of_mfc = 0
@@ -1868,6 +1868,17 @@ class V2C_VS10ProjParser
   end
 end
 
+def util_flatten_string(in_string)
+  return in_string.gsub(/\s/, '_')
+end
+
+# Hrmm, I'm not quite sure yet where to aggregate this function...
+def cmake_get_config_info_condition_var_name(config_info)
+  # Name may contain spaces - need to handle them!
+  config_name = util_flatten_string(config_info.name)
+  return "v2c_want_buildcfg_#{config_name}"
+end
+
 def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr_config_info)
       if target.nil?
         log_fatal 'invalid target'
@@ -1942,12 +1953,11 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
 	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
 	end
-	var_v2c_want_buildcfg_curr = "v2c_want_buildcfg_#{config_info_curr.name}"
-	syntax_generator.write_set_var_bool_conditional(var_v2c_want_buildcfg_curr, build_type_condition)
+	syntax_generator.write_set_var_bool_conditional(cmake_get_config_info_condition_var_name(config_info_curr), build_type_condition)
       }
 
       arr_config_info.each { |config_info_curr|
-	var_v2c_want_buildcfg_curr = "v2c_want_buildcfg_#{config_info_curr.name}"
+	var_v2c_want_buildcfg_curr = cmake_get_config_info_condition_var_name(config_info_curr)
 	syntax_generator.write_empty_line()
 	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
 
