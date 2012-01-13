@@ -2080,7 +2080,7 @@ class V2C_CMakeGenerator
   end
   def generate
     @arr_targets.each { |target|
-      # write into temporary file, to avoid corrupting previous CMakeLists.txt due to disk space or failure issues
+      # write into temporary file, to avoid corrupting previous CMakeLists.txt due to syntax error abort, disk space or failure issues
       tmpfile = Tempfile.new('vcproj2cmake')
 
       File.open(tmpfile.path, 'w') { |out|

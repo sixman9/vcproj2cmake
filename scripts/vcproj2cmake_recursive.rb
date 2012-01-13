@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'find'
+require 'tempfile'
 require 'pathname'
 
 script_dir = File.dirname(__FILE__)
@@ -43,7 +44,9 @@ end
 # Hmm, or perhaps port _everything_ back into vcproj2cmake.rb,
 # providing --recursive together with --scan or --convert switches for all_sub_projects.txt generation or use.
 
-projlistfile = File.new("#{$v2c_config_dir_local}/all_sub_projects.txt", 'w+')
+# write into temporary file, to avoid corrupting previous CMakeLists.txt due to syntax error abort, disk space or failure issues
+tmpfile = Tempfile.new('vcproj2cmake_recursive')
+projlistfile = File.open(tmpfile.path, 'w')
 
 Find.find('./') do
   |f|
@@ -194,4 +197,16 @@ Find.find('./') do
   #puts
 end
 
+# Make sure to close it:
 projlistfile.close
+
+# make sure to close that one as well...
+tmpfile.close
+
+output_file = "#{$v2c_config_dir_local}/all_sub_projects.txt"
+
+# FIXME: implement common helper for tmpfile renaming as done in
+# vcproj2cmake.rb, then use it here as well.
+
+V2C_Util_File.chmod($v2c_cmakelists_create_permissions, tmpfile.path)
+V2C_Util_File.mv(tmpfile.path, output_file)
