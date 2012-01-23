@@ -1679,7 +1679,7 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
   }
 end
 
-class V2C_VS7ProjParser
+class V2C_VS7ProjectFilesParser
   def initialize(vcproj_filename, arr_targets, arr_config_info)
     @vcproj_filename = vcproj_filename
     @arr_targets = arr_targets
@@ -1842,7 +1842,30 @@ class V2C_VS10ProjectParser < V2C_VS10ProjectParserBase
   end
 end
 
-class V2C_VS10ProjParser
+# Project parser variant which works on XML-stream-based input
+class V2C_VS10ProjectXmlParser
+  def initialize(doc_proj, arr_targets, arr_config_info)
+    @doc_proj = doc_proj
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    @doc_proj.elements.each { |elem_xml|
+      case elem_xml.name
+      when 'Project'
+        target = V2C_Target.new
+        project_parser = V2C_VS10ProjectParser.new(elem_xml, target, @arr_config_info)
+        project_parser.parse
+        @arr_targets.push(target)
+      else
+        unknown_element(elem_xml.name)
+      end
+    }
+  end
+end
+
+# Project parser variant which works on file-based input
+class V2C_VS10ProjectFileParser
   def initialize(proj_filename, arr_targets, arr_config_info)
     @proj_filename = proj_filename
     @arr_targets = arr_targets
@@ -1850,21 +1873,108 @@ class V2C_VS10ProjParser
   end
   def parse
     File.open(@proj_filename) { |io|
-      doc = REXML::Document.new io
+      doc_proj = REXML::Document.new io
 
-      # FIXME: object encapsulation/hierarchy is not completely clean yet...
-      # (dito VS7 parsing)
-
-      #global_parser = V2C_VS10Parser.new
-
-      doc.elements.each('Project') { |project_xml|
-        target = V2C_Target.new
-  	project_parser = V2C_VS10ProjectParser.new(project_xml, target, @arr_config_info)
-
-  	project_parser.parse
-  	@arr_targets.push(target)
-      }
+      proj_xml_parser = V2C_VS10ProjectXmlParser.new(doc_proj, @arr_targets, @arr_config_info)
+      proj_xml_parser.parse
     }
+  end
+end
+
+class V2C_VS10ProjectFiltersParserBase < V2C_VS10ParserBase
+end
+
+class V2C_VS10ProjectFiltersParser < V2C_VS10ProjectFiltersParserBase
+  def initialize(project_filters_xml, target_out, arr_config_info)
+    @project_filters_xml = project_filters_xml
+    @target = target_out
+    @arr_config_info = arr_config_info
+  end
+
+  def parse
+    # Do strict traversal over _all_ elements, parse what's supported by us,
+    # and yell loudly for any element which we don't know about!
+    # FIXME: VS7 parser should be changed to do the same thing...
+    @project_filters_xml.elements.each { |elem_xml|
+      proj_elem_parser = nil
+      case elem_xml.name
+      when 'ItemGroup'
+        proj_filters_elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
+      #when 'PropertyGroup'
+      #  proj_filters_elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target)
+      else
+        unknown_element(elem_xml.name)
+      end
+      if not proj_filters_elem_parser.nil?
+        proj_filters_elem_parser.parse
+      end
+    }
+  end
+end
+
+# Project filters parser variant which works on XML-stream-based input
+class V2C_VS10ProjectFiltersXmlParser
+  def initialize(doc_proj_filters, arr_targets, arr_config_info)
+    @doc_proj_filters = doc_proj_filters
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    idx_target = 0
+    puts "FIXME: filters file exists, needs parsing!"
+    @doc_proj_filters.elements.each { |elem_xml|
+      case elem_xml.name
+      when 'Project'
+	# FIXME handle fetch() exception
+        target = @arr_targets.fetch(idx_target)
+        idx_target += 1
+        project_filters_parser = V2C_VS10ProjectFiltersParser.new(elem_xml, target, @arr_config_info)
+        project_filters_parser.parse
+      else
+        unknown_element(elem_xml.name)
+      end
+    }
+  end
+end
+
+# Project filters parser variant which works on file-based input
+class V2C_VS10ProjectFiltersFileParser
+  def initialize(proj_filters_filename, arr_targets, arr_config_info)
+    @proj_filters_filename = proj_filters_filename
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    # Parse the file filters file (_separate_ in VS10!)
+    # if it exists:
+    File.open(@proj_filters_filename) { |io|
+      doc_proj_filters = REXML::Document.new io
+
+      project_filters_parser = V2C_VS10ProjectFiltersXmlParser.new(doc_proj_filters, @arr_targets, @arr_config_info)
+      project_filters_parser.parse
+    }
+  end
+
+  private
+  def parse_filters(doc_filters_xml, target)
+    doc_filters_xml.elements.each('Project') { |project_xml|
+      parse_proj(project_xml)
+    }
+  end
+end
+
+class V2C_VS10ProjectFilesParser
+  def initialize(proj_filename, arr_targets, arr_config_info)
+    @proj_filename = proj_filename
+    @arr_targets = arr_targets
+    @arr_config_info = arr_config_info
+  end
+  def parse
+    proj_file_parser = V2C_VS10ProjectFileParser.new(@proj_filename, @arr_targets, @arr_config_info)
+    proj_filters_file_parser = V2C_VS10ProjectFiltersFileParser.new("#{@proj_filename}.filters", @arr_targets, @arr_config_info)
+
+    proj_file_parser.parse
+    proj_filters_file_parser.parse
   end
 end
 
@@ -1884,7 +1994,7 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
         log_fatal 'invalid target'
       end
       if main_files.nil?
-        log_fatal 'project has no files!?'
+        log_fatal 'project has no files!? --> will not generate it'
       end
 
       target_is_valid = false
@@ -2161,9 +2271,9 @@ arr_config_info = Array.new
 # Q&D parser switch...
 parser = nil
 if str_vcproj_filename.match(/.vcproj$/)
-  parser = V2C_VS7ProjParser.new(vcproj_filename, arr_targets, arr_config_info)
+  parser = V2C_VS7ProjectFilesParser.new(vcproj_filename, arr_targets, arr_config_info)
 elsif str_vcproj_filename.match(/.vcxproj$/)
-  parser = V2C_VS10ProjParser.new(vcproj_filename, arr_targets, arr_config_info)
+  parser = V2C_VS10ProjectFilesParser.new(vcproj_filename, arr_targets, arr_config_info)
 end
 
 parser.parse
