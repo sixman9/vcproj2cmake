@@ -274,9 +274,8 @@ $script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
 #puts "p_script #{p_script} | p_master_proj #{p_master_proj} | $script_location_relative_to_master #{$script_location_relative_to_master}"
 
 def log_debug(str)
-  if $v2c_debug
-    puts str
-  end
+  return if not $v2c_debug
+  puts str
 end
 
 def log_info(str)
@@ -342,10 +341,9 @@ end
 # settings which should _override_ the global defaults).
 def read_mappings_combined(filename_mappings, mappings)
   read_mappings(filename_mappings, mappings)
-  if $master_project_dir
-    # read common mappings (in source root) to be used by all sub projects
-    read_mappings("#{$master_project_dir}/#{filename_mappings}", mappings)
-  end
+  return if not $master_project_dir
+  # read common mappings (in source root) to be used by all sub projects
+  read_mappings("#{$master_project_dir}/#{filename_mappings}", mappings)
 end
 
 def push_platform_defn(platform_defs, platform, defn_value)
@@ -557,11 +555,10 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
   end
 
   def write_comment_at_level(level, block)
-    if generated_comments_level() >= level
-      block.split("\n").each { |line|
-	write_line("# #{line}")
-      }
-    end
+    return if generated_comments_level() < level
+    block.split("\n").each { |line|
+      write_line("# #{line}")
+    }
   end
   def write_command_quoted_list(cmake_command, cmake_command_arg, arr_elems)
     if cmake_command_arg.nil?
@@ -600,23 +597,20 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
 
   # WIN32, MSVC, ...
   def write_conditional_if(str_conditional)
-    if not str_conditional.nil?
-      write_command_single_line('if', str_conditional)
-      indent_more()
-    end
+    return if str_conditional.nil?
+    write_command_single_line('if', str_conditional)
+    indent_more()
   end
   def write_conditional_else(str_conditional)
-    if not str_conditional.nil?
-      indent_less()
-      write_command_single_line('else', str_conditional)
-      indent_more()
-    end
+    return if str_conditional.nil?
+    indent_less()
+    write_command_single_line('else', str_conditional)
+    indent_more()
   end
   def write_conditional_end(str_conditional)
-    if not str_conditional.nil?
-      indent_less()
-      write_command_single_line('endif', str_conditional)
-    end
+    return if str_conditional.nil?
+    indent_less()
+    write_command_single_line('endif', str_conditional)
   end
   def get_keyword_bool(setting)
     return setting ? 'true' : 'false'
@@ -928,14 +922,13 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # are relative to CMAKE_PROJECT_SOURCE_DIR and _not_ BINARY,
     # at least on Makefile and .vcproj.
     # CMake dox currently don't offer such details... (yet!)
-    if not arr_includes.empty?
-      arr_includes_translated = Array.new
-      arr_includes.each { |elem_inc_dir|
-        elem_inc_dir = vs7_create_config_variable_translation(elem_inc_dir, @arr_config_var_handling)
-        arr_includes_translated.push(elem_inc_dir)
-      }
-      write_build_attributes('include_directories', arr_includes_translated, map_includes, nil)
-    end
+    return if arr_includes.empty?
+    arr_includes_translated = Array.new
+    arr_includes.each { |elem_inc_dir|
+      elem_inc_dir = vs7_create_config_variable_translation(elem_inc_dir, @arr_config_var_handling)
+      arr_includes_translated.push(elem_inc_dir)
+    }
+    write_build_attributes('include_directories', arr_includes_translated, map_includes, nil)
   end
 
   def write_link_directories(arr_lib_dirs, map_lib_dirs)
@@ -1220,51 +1213,47 @@ class V2C_VS7Parser
 
   def read_compiler_additional_include_directories(compiler_xml, arr_includes)
     attr_incdir = compiler_xml.attributes['AdditionalIncludeDirectories']
-    if not attr_incdir.nil?
-      # FIXME: we should probably get rid of sort() here (and elsewhere),
-      # but for now we'll keep it, to retain identically generated files.
-      include_dirs = attr_incdir.split(/#{@vs7_value_separator_regex}/).sort.each { |elem_inc_dir|
-        elem_inc_dir = normalize_path(elem_inc_dir).strip
-        #log_info "include is '#{elem_inc_dir}'"
-        arr_includes.push(elem_inc_dir)
-      }
-    end
+    return if attr_incdir.nil?
+    # FIXME: we should probably get rid of sort() here (and elsewhere),
+    # but for now we'll keep it, to retain identically generated files.
+    include_dirs = attr_incdir.split(/#{@vs7_value_separator_regex}/).sort.each { |elem_inc_dir|
+      elem_inc_dir = normalize_path(elem_inc_dir).strip
+      #log_info "include is '#{elem_inc_dir}'"
+      arr_includes.push(elem_inc_dir)
+    }
   end
 
   def read_compiler_preprocessor_definitions(compiler_xml, hash_defines)
     attr_defines = compiler_xml.attributes['PreprocessorDefinitions']
-    if not attr_defines.nil?
-      attr_defines.split(/#{@vs7_value_separator_regex}/).each { |elem_define|
-        str_define_key, str_define_value = elem_define.strip.split(/=/)
-        # Since a Hash will indicate nil for any non-existing key,
-        # we do need to fill in _empty_ value for our _existing_ key.
-        if str_define_value.nil?
-  	str_define_value = ''
-        end
-        hash_defines[str_define_key] = str_define_value
-      }
-    end
+    return if attr_defines.nil?
+    attr_defines.split(/#{@vs7_value_separator_regex}/).each { |elem_define|
+      str_define_key, str_define_value = elem_define.strip.split(/=/)
+      # Since a Hash will indicate nil for any non-existing key,
+      # we do need to fill in _empty_ value for our _existing_ key.
+      if str_define_value.nil?
+        str_define_value = ''
+      end
+      hash_defines[str_define_key] = str_define_value
+    }
   end
 
   def read_linker_additional_dependencies(linker_xml, arr_dependencies)
     attr_deps = linker_xml.attributes['AdditionalDependencies']
-    if attr_deps and attr_deps.length > 0
-      attr_deps.split.each { |elem_lib_dep|
-        elem_lib_dep = normalize_path(elem_lib_dep).strip
-        arr_dependencies.push(File.basename(elem_lib_dep, '.lib'))
-      }
-    end
+    return if attr_deps.nil? or attr_deps.length == 0
+    attr_deps.split.each { |elem_lib_dep|
+      elem_lib_dep = normalize_path(elem_lib_dep).strip
+      arr_dependencies.push(File.basename(elem_lib_dep, '.lib'))
+    }
   end
 
   def read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
     attr_lib_dirs = linker_xml.attributes['AdditionalLibraryDirectories']
-    if attr_lib_dirs and attr_lib_dirs.length > 0
-      attr_lib_dirs.split(/#{@vs7_value_separator_regex}/).each { |elem_lib_dir|
-        elem_lib_dir = normalize_path(elem_lib_dir).strip
-        #log_info "lib dir is '#{elem_lib_dir}'"
-        arr_lib_dirs.push(elem_lib_dir)
-      }
-    end
+    return if attr_lib_dirs.nil? or attr_lib_dirs.length == 0
+    attr_lib_dirs.split(/#{@vs7_value_separator_regex}/).each { |elem_lib_dir|
+      elem_lib_dir = normalize_path(elem_lib_dir).strip
+      #log_info "lib dir is '#{elem_lib_dir}'"
+      arr_lib_dirs.push(elem_lib_dir)
+    }
   end
 end
 
