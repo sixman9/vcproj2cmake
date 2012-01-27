@@ -72,21 +72,6 @@ $LOAD_PATH.unshift($script_dir + '/./lib') unless $LOAD_PATH.include?($script_di
 # load common settings
 load 'vcproj2cmake_settings.rb'
 
-
-### USER-CONFIGURABLE SECTION ###
-
-# global variable to indicate whether we want debug output or not
-$v2c_debug = false
-
-# Initial number of spaces for indenting
-$v2c_generator_indent_num_spaces = 0
-
-# Number of spaces to increment by
-$v2c_generator_indent_step = 2
-
-### USER-CONFIGURABLE SECTION END ###
-
-
 require 'vcproj2cmake/v2c_core' # (currently) large amount of random "core" functionality
 
 ################

@@ -1,3 +1,17 @@
+### USER-CONFIGURABLE SECTION ###
+
+# global variable to indicate whether we want debug output or not
+$v2c_debug = false
+
+# Initial number of spaces for indenting
+$v2c_generator_indent_num_spaces = 0
+
+# Number of spaces to increment by
+$v2c_generator_indent_step = 2
+
+### USER-CONFIGURABLE SECTION END ###
+
+
 require 'vcproj2cmake/util_file' # V2C_Util_File.cmp()
 
 # At least currently, this is a custom plugin mechanism.
