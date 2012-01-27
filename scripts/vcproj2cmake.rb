@@ -59,7 +59,6 @@
 
 require 'tempfile'
 require 'pathname'
-require 'rexml/document'
 require 'find' # Find.find()
 
 # http://devblog.vworkapp.com/post/910714976/best-practice-for-rubys-require
@@ -88,10 +87,6 @@ $v2c_generator_indent_step = 2
 
 ### USER-CONFIGURABLE SECTION END ###
 
-script_name = $0
-
-script_location = File.expand_path(script_name)
-p_script = Pathname.new(script_location)
 
 # At least currently, this is a custom plugin mechanism.
 # It doesn't have anything to do with e.g.
@@ -151,96 +146,6 @@ plugin_parser_vs10.extension_name = 'vcxproj'
 V2C_Core_Add_Plugin_Parser(plugin_parser_vs10)
 
 
-# Usage: vcproj2cmake.rb <input.vc[x]proj> [<output CMakeLists.txt>] [<master project directory>]
-
-#*******************************************************************************************************
-# Check for command-line input errors
-# -----------------------------------
-cl_error = ''
-
-vcproj_filename = nil
-
-if ARGV.length < 1
-   cl_error = "*** Too few arguments\n"
-else
-   str_vcproj_filename = ARGV.shift
-   #puts "First arg is #{str_vcproj_filename}"
-
-   # Discovered Ruby 1.8.7(?) BUG: kills extension on duplicate slashes: ".//test.ext"
-   # OK: ruby-1.8.5-5.el5_4.8, KO: u10.04 ruby1.8 1.8.7.249-2 and ruby1.9.1 1.9.1.378-1
-   # http://redmine.ruby-lang.org/issues/show/3882
-   # TODO: add a version check to conditionally skip this cleanup effort?
-   vcproj_filename_full = Pathname.new(str_vcproj_filename).cleanpath
-
-   $arr_plugin_parser.each { |plugin_parser_curr|
-     vcproj_filename_test = vcproj_filename_full.clone
-     parser_extension = ".#{plugin_parser_curr.extension_name}"
-     if File.extname(vcproj_filename_test) == parser_extension
-       vcproj_filename = vcproj_filename_test
-       break
-     else
-        # The first argument on the command-line did not have a '.vcproj' extension.
-        # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
-        # (Note:  Only '+' works here for concatenation, not '<<'.)
-        vcproj_filename_test += parser_extension
-  
-        #puts "Looking for #{vcproj_filename}"
-        if FileTest.exist?(vcproj_filename_test)
-          vcproj_filename = vcproj_filename_test
-	  break
-        end
-     end
-   }
-end
-
-if vcproj_filename.nil?
-  str_parser_descrs = ''
-  $arr_plugin_parser.each { |plugin_parser_named|
-    str_parser_descr_elem = ".#{plugin_parser_named.extension_name} [#{plugin_parser_named.parser_name}]"
-    str_parser_descrs += str_parser_descr_elem + ', '
-  }
-  cl_error = "*** The first argument must be the project name / file (supported parsers: #{str_parser_descrs})\n"
-end
-
-if ARGV.length > 3
-   cl_error = cl_error << "*** Too many arguments\n"
-end
-
-unless cl_error == ''
-   puts %{\
-*** Input Error *** #{script_name}
-#{cl_error}
-
-Usage: vcproj2cmake.rb <project input file> [<output CMakeLists.txt>] [<master project directory>]
-
-project input file can e.g. have .vcproj or .vcxproj extension.
-}
-
-   exit 1
-end
-
-# TODO: create the proper parser object!
-# "Dynamically instantiate a class"
-#   http://www.ruby-forum.com/topic/141758
-
-#if File.extname(vcproj_filename) == '.vcproj'
-#end
-
-# Process the optional command-line arguments
-# -------------------------------------------
-# FIXME:  Variables 'output_file' and 'master_project_dir' are position-dependent on the
-# command-line, if they are entered.  The script does not have a way to distinguish whether they
-# were input in the wrong order.  A potential fix is to associate flags with the arguments, like
-# '-i <input.vcproj> [-o <output CMakeLists.txt>] [-d <master project directory>]' and then parse
-# them accordingly.  This lets them be entered in any order and removes ambiguity.
-# -------------------------------------------
-output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), 'CMakeLists.txt')
-
-# Master (root) project dir defaults to current dir--useful for simple, single-.vcproj conversions.
-$master_project_dir = ARGV.shift
-if not $master_project_dir
-  $master_project_dir = '.'
-end
 #*******************************************************************************************************
 
 # since the .vcproj multi-configuration environment has some settings
@@ -256,22 +161,6 @@ $filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
 $filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
 $filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
-
-master_project_location = File.expand_path($master_project_dir)
-p_master_proj = Pathname.new(master_project_location)
-
-$p_vcproj = Pathname.new(vcproj_filename)
-# figure out a global project_dir variable from the .vcproj location
-$project_dir = $p_vcproj.dirname
-
-#p_project_dir = Pathname.new($project_dir)
-#p_cmakelists = Pathname.new(output_file)
-#cmakelists_dir = p_cmakelists.dirname
-#p_cmakelists_dir = Pathname.new(cmakelists_dir)
-#p_cmakelists_dir.relative_path_from(...)
-
-$script_location_relative_to_master = p_script.relative_path_from(p_master_proj)
-#puts "p_script #{p_script} | p_master_proj #{p_master_proj} | $script_location_relative_to_master #{$script_location_relative_to_master}"
 
 def log_debug(str)
   return if not $v2c_debug
@@ -1202,6 +1091,9 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_command_single_line('set_property', "TARGET #{target} PROPERTY #{property} \"#{value}\"")
   end
 end
+
+# XML support as required by VS7+/VS10 parsers:
+require 'rexml/document'
 
 $vs7_prop_var_scan_regex = '\\$\\(([[:alnum:]_]+)\\)'
 $vs7_prop_var_match_regex = '\\$\\([[:alnum:]_]+\\)'
@@ -2254,27 +2146,157 @@ end
 #     MAIN     #
 ################
 
-arr_targets = Array.new
-arr_config_info = Array.new
+script_name = $0
 
-# Q&D parser switch...
-parser = nil
-if str_vcproj_filename.match(/.vcproj$/)
-  parser = V2C_VS7ProjectFilesParser.new(vcproj_filename, arr_targets, arr_config_info)
-elsif str_vcproj_filename.match(/.vcxproj$/)
-  parser = V2C_VS10ProjectFilesParser.new(vcproj_filename, arr_targets, arr_config_info)
+# Usage: vcproj2cmake.rb <input.vc[x]proj> [<output CMakeLists.txt>] [<master project directory>]
+
+#*******************************************************************************************************
+# Check for command-line input errors
+# -----------------------------------
+cl_error = ''
+
+vcproj_filename = nil
+
+if ARGV.length < 1
+   cl_error = "*** Too few arguments\n"
+else
+   str_vcproj_filename = ARGV.shift
+   #puts "First arg is #{str_vcproj_filename}"
+
+   # Discovered Ruby 1.8.7(?) BUG: kills extension on duplicate slashes: ".//test.ext"
+   # OK: ruby-1.8.5-5.el5_4.8, KO: u10.04 ruby1.8 1.8.7.249-2 and ruby1.9.1 1.9.1.378-1
+   # http://redmine.ruby-lang.org/issues/show/3882
+   # TODO: add a version check to conditionally skip this cleanup effort?
+   vcproj_filename_full = Pathname.new(str_vcproj_filename).cleanpath
+
+   $arr_plugin_parser.each { |plugin_parser_curr|
+     vcproj_filename_test = vcproj_filename_full.clone
+     parser_extension = ".#{plugin_parser_curr.extension_name}"
+     if File.extname(vcproj_filename_test) == parser_extension
+       vcproj_filename = vcproj_filename_test
+       break
+     else
+        # The first argument on the command-line did not have a '.vcproj' extension.
+        # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
+        # (Note:  Only '+' works here for concatenation, not '<<'.)
+        vcproj_filename_test += parser_extension
+  
+        #puts "Looking for #{vcproj_filename}"
+        if FileTest.exist?(vcproj_filename_test)
+          vcproj_filename = vcproj_filename_test
+	  break
+        end
+     end
+   }
 end
 
-parser.parse
-
-orig_proj_file_basename = $p_vcproj.basename
-
-generator = nil
-if true
-  generator = V2C_CMakeGenerator.new(orig_proj_file_basename, output_file, arr_targets, arr_config_info)
+if vcproj_filename.nil?
+  str_parser_descrs = ''
+  $arr_plugin_parser.each { |plugin_parser_named|
+    str_parser_descr_elem = ".#{plugin_parser_named.extension_name} [#{plugin_parser_named.parser_name}]"
+    str_parser_descrs += str_parser_descr_elem + ', '
+  }
+  cl_error = "*** The first argument must be the project name / file (supported parsers: #{str_parser_descrs})\n"
 end
 
-if not generator.nil?
-  generator.generate
+if ARGV.length > 3
+   cl_error = cl_error << "*** Too many arguments\n"
 end
 
+unless cl_error == ''
+   puts %{\
+*** Input Error *** #{script_name}
+#{cl_error}
+
+Usage: vcproj2cmake.rb <project input file> [<output CMakeLists.txt>] [<master project directory>]
+
+project input file can e.g. have .vcproj or .vcxproj extension.
+}
+
+   exit 1
+end
+
+# TODO: create the proper parser object!
+# "Dynamically instantiate a class"
+#   http://www.ruby-forum.com/topic/141758
+
+#if File.extname(vcproj_filename) == '.vcproj'
+#end
+
+# Process the optional command-line arguments
+# -------------------------------------------
+# FIXME:  Variables 'output_file' and 'master_project_dir' are position-dependent on the
+# command-line, if they are entered.  The script does not have a way to distinguish whether they
+# were input in the wrong order.  A potential fix is to associate flags with the arguments, like
+# '-i <input.vcproj> [-o <output CMakeLists.txt>] [-d <master project directory>]' and then parse
+# them accordingly.  This lets them be entered in any order and removes ambiguity.
+# -------------------------------------------
+output_file = ARGV.shift or output_file = File.join(File.dirname(vcproj_filename), 'CMakeLists.txt')
+
+# Master (root) project dir defaults to current dir--useful for simple, single-.vcproj conversions.
+master_project_dir = ARGV.shift
+if not master_project_dir
+  master_project_dir = '.'
+end
+def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_file, p_master_project)
+  # figure out a project_dir variable from the .vcproj location
+  project_dir = p_parser_proj_file.dirname
+
+  # HACK: make project_dir a global variable...
+  $project_dir = project_dir
+
+  # HACK: create global $master_project_dir variable...
+  $master_project_dir = p_master_project.to_s
+
+  #p_project_dir = Pathname.new($project_dir)
+  #p_cmakelists = Pathname.new(output_file)
+  #cmakelists_dir = p_cmakelists.dirname
+  #p_cmakelists_dir = Pathname.new(cmakelists_dir)
+  #p_cmakelists_dir.relative_path_from(...)
+
+  # HACK: create global $script_location_relative_to_master variable...
+  $script_location_relative_to_master = p_script.relative_path_from(p_master_project)
+  #puts "p_script #{p_script} | p_master_project #{p_master_project} | $script_location_relative_to_master #{$script_location_relative_to_master}"
+
+  arr_targets = Array.new
+  arr_config_info = Array.new
+
+  parser_project_filename = p_parser_proj_file.to_s
+  # Q&D parser switch...
+  parser = nil
+  if parser_project_filename.match(/.vcproj$/)
+    parser = V2C_VS7ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
+  elsif parser_project_filename.match(/.vcxproj$/)
+    parser = V2C_VS10ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
+  end
+
+  parser.parse
+
+  orig_proj_file_basename = p_parser_proj_file.basename
+
+  generator_project_filename = p_generator_proj_file.to_s
+  generator = nil
+  if true
+    generator = V2C_CMakeGenerator.new(orig_proj_file_basename, generator_project_filename, arr_targets, arr_config_info)
+  end
+
+  if not generator.nil?
+    generator.generate
+  end
+end
+
+# Treat non-normalized ("raw") input arguments as needed,
+# then pass on to inner function.
+def v2c_convert_project_outer(project_converter_script_filename, parser_proj_file, generator_proj_file, master_project_dir)
+  p_parser_proj_file = Pathname.new(parser_proj_file)
+  p_generator_proj_file = Pathname.new(generator_proj_file)
+  master_project_location = File.expand_path(master_project_dir)
+  p_master_project = Pathname.new(master_project_location)
+
+  script_location = File.expand_path(project_converter_script_filename)
+  p_script = Pathname.new(script_location)
+
+  v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_file, p_master_project)
+end
+
+v2c_convert_project_outer(script_name, vcproj_filename, output_file, master_project_dir)
