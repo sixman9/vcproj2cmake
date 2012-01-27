@@ -39,12 +39,17 @@ set(v2c_script_converter_module_util_file
   "${v2c_scripts_modules_subdir}/${v2c_scripts_modules_namespace}/util_file.rb"
 )
 
+set(v2c_script_converter_module_v2c_core
+  "${v2c_scripts_modules_subdir}/${v2c_scripts_modules_namespace}/v2c_core.rb"
+)
+
 set(v2c_scripts_modules_install_dir
   "${v2c_scripts_install_dir}/${v2c_scripts_modules_subdir}/${v2c_scripts_modules_namespace}"
 )
 
 install(FILES
   "${v2c_script_converter_module_util_file}"
+  "${v2c_script_converter_module_v2c_core}"
   DESTINATION "${v2c_scripts_modules_install_dir}"
 )
 
