@@ -4,10 +4,11 @@ require 'find'
 require 'tempfile'
 require 'pathname'
 
-script_dir = File.dirname(__FILE__)
+# HACK: have $script_dir as global variable currently
+$script_dir = File.dirname(__FILE__)
 
-$LOAD_PATH.unshift(script_dir + '/.') unless $LOAD_PATH.include?(script_dir + '/.')
-$LOAD_PATH.unshift(script_dir + '/./lib') unless $LOAD_PATH.include?(script_dir + '/./lib')
+$LOAD_PATH.unshift($script_dir + '/.') unless $LOAD_PATH.include?($script_dir + '/.')
+$LOAD_PATH.unshift($script_dir + '/./lib') unless $LOAD_PATH.include?($script_dir + '/./lib')
 
 #puts "LOAD_PATH: #{$LOAD_PATH.inspect}\n" # nice debugging
 
@@ -15,6 +16,8 @@ require 'vcproj2cmake/util_file' # V2C_Util_File.mkdir_p()
 
 # load common settings
 load 'vcproj2cmake_settings.rb'
+
+require 'vcproj2cmake/v2c_core' # (currently) large amount of random "core" functionality
 
 script_fqpn = File.expand_path $0
 script_path = Pathname.new(script_fqpn).parent
@@ -177,11 +180,16 @@ Find.find('./') do
     #puts "REBUILD #{f}!! #{rebuild}"
   end
   #puts "#{f}/#{projfile}"
-  # see "A dozen (or so) ways to start sub-processes in Ruby: Part 1"
-  puts "launching ruby #{script_path}/vcproj2cmake.rb '#{f}/#{projfile}' '#{f}/CMakeLists.txt' '#{source_root}'"
-  output = `ruby #{script_path}/vcproj2cmake.rb '#{f}/#{projfile}' '#{f}/CMakeLists.txt' '#{source_root}'`
-  puts "output was:"
-  puts output
+  externally_spawned = false
+  if externally_spawned
+    # see "A dozen (or so) ways to start sub-processes in Ruby: Part 1"
+    puts "launching ruby #{script_path}/vcproj2cmake.rb '#{f}/#{projfile}' '#{f}/CMakeLists.txt' '#{source_root}'"
+    output = `ruby #{script_path}/vcproj2cmake.rb '#{f}/#{projfile}' '#{f}/CMakeLists.txt' '#{source_root}'`
+    puts "output was:"
+    puts output
+  else
+    v2c_convert_project_outer("#{script_path}/vcproj2cmake.rb", "#{f}/#{projfile}", "#{f}/CMakeLists.txt", source_root)
+  end
 
   # the root directory is special: it might contain another project (it shouldn't!!),
   # thus we need to skip it if so (then include the root directory
