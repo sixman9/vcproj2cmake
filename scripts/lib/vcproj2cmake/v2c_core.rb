@@ -561,6 +561,21 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
   def initialize(out)
     super(out)
   end
+  def put_configuration_types(configuration_types)
+    configuration_types_list = separate_arguments(configuration_types)
+    write_set_var('CMAKE_CONFIGURATION_TYPES', "\"#{configuration_types_list}\"")
+  end
+
+  private
+end
+
+class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
+  def initialize(out)
+    # FIXME: handle arr_config_var_handling appropriately
+    # (place the translated CMake commands somewhere suitable)
+    @arr_config_var_handling = Array.new
+    super(out)
+  end
   def put_file_header
     put_file_header_temporary_marker()
     put_file_header_cmake_minimum_version()
@@ -575,90 +590,6 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # TODO: figure out language type (C CXX etc.) and add it to project() command
     write_command_single_line('project', project_name)
   end
-  def put_cmake_mfc_atl_flag(config_info)
-    # Hmm, do we need to actively _reset_ CMAKE_MFC_FLAG / CMAKE_ATL_FLAG
-    # (i.e. _unconditionally_ set() it, even if it's 0),
-    # since projects in subdirs shouldn't inherit?
-    # Given the discussion at
-    # "[CMake] CMAKE_MFC_FLAG is inherited in subdirectory ?"
-    #   http://www.cmake.org/pipermail/cmake/2009-February/026896.html
-    # I'd strongly assume yes...
-    # See also "Re: [CMake] CMAKE_MFC_FLAG not working in functions"
-    #   http://www.mail-archive.com/cmake@cmake.org/msg38677.html
-
-    #if config_info.use_of_mfc > 0
-      write_set_var('CMAKE_MFC_FLAG', config_info.use_of_mfc)
-    #end
-    # ok, there's no CMAKE_ATL_FLAG yet, AFAIK, but still prepare
-    # for it (also to let people probe on this in hook includes)
-    #if config_info.use_of_atl > 0
-      # TODO: should also set the per-configuration-type variable variant
-      #write_new_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
-      write_set_var('CMAKE_ATL_FLAG', config_info.use_of_atl)
-    #end
-  end
-  def put_hook_pre
-    # this CMakeLists.txt-global optional include could be used e.g.
-    # to skip the entire build of this file on certain platforms:
-    # if(PLATFORM) message(STATUS "not supported") return() ...
-    # (note that we appended CMAKE_MODULE_PATH _prior_ to this include()!)
-    write_include_optional('"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt"')
-  end
-  def put_hook_project
-    write_comment_at_level(2, \
-	"hook e.g. for invoking Find scripts as expected by\n" \
-	"the _LIBRARIES / _INCLUDE_DIRS mappings created\n" \
-	"by your include/dependency map files." \
-    )
-    write_include_optional('"${V2C_HOOK_PROJECT}"')
-  end
-  def put_hook_post_definitions
-    write_empty_line()
-    write_comment_at_level(1, \
-	"hook include after all definitions have been made\n" \
-	"(but _before_ target is created using the source list!)" \
-    )
-    write_include_optional('"${V2C_HOOK_POST_DEFINITIONS}"')
-  end
-  def put_hook_post_sources
-    write_include_optional('"${V2C_HOOK_POST_SOURCES}"')
-  end
-  def put_hook_post_target
-    write_empty_line()
-    write_comment_at_level(1, \
-      "e.g. to be used for tweaking target properties etc." \
-    )
-    write_include_optional('"${V2C_HOOK_POST_TARGET}"')
-  end
-  def put_include_project_source_dir
-    # AFAIK .vcproj implicitly adds the project root to standard include path
-    # (for automatic stdafx.h resolution etc.), thus add this
-    # (and make sure to add it with high priority, i.e. use BEFORE).
-    write_empty_line()
-    write_command_single_line('include_directories', 'BEFORE "${PROJECT_SOURCE_DIR}"')
-  end
-  def put_configuration_types(configuration_types)
-    configuration_types_list = separate_arguments(configuration_types)
-    write_set_var('CMAKE_CONFIGURATION_TYPES', "\"#{configuration_types_list}\"")
-  end
-  def put_var_converter_script_location(script_location_relative_to_master)
-    # For the CMakeLists.txt rebuilder (automatic rebuild on file changes),
-    # add handling of a script file location variable, to enable users
-    # to override the script location if needed.
-    write_empty_line()
-    write_comment_at_level(1, \
-      "user override mechanism (allow defining custom location of script)" \
-    )
-    str_conditional = 'NOT V2C_SCRIPT_LOCATION'
-    write_conditional_if(str_conditional)
-      # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
-      # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
-      # (this provision should even enable people to manually relocate
-      # an entire sub project within the source tree).
-      write_set_var('V2C_SCRIPT_LOCATION', "\"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\"")
-    write_conditional_end(str_conditional)
-  end
-
   def put_include_MasterProjectDefaults_vcproj2cmake
     if generated_comments_level() >= 2
       @out.puts %{\
@@ -683,6 +614,135 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     end
     # (side note: see "ldd -u -r" on Linux for superfluous link parts potentially caused by this!)
     write_include_optional('MasterProjectDefaults_vcproj2cmake')
+  end
+  def put_hook_project
+    write_comment_at_level(2, \
+	"hook e.g. for invoking Find scripts as expected by\n" \
+	"the _LIBRARIES / _INCLUDE_DIRS mappings created\n" \
+	"by your include/dependency map files." \
+    )
+    write_include_optional('"${V2C_HOOK_PROJECT}"')
+  end
+
+  def put_include_project_source_dir
+    # AFAIK .vcproj implicitly adds the project root to standard include path
+    # (for automatic stdafx.h resolution etc.), thus add this
+    # (and make sure to add it with high priority, i.e. use BEFORE).
+    # For now sitting in LocalGenerator and not per-target handling since this setting is valid for the entire directory.
+    write_empty_line()
+    write_command_single_line('include_directories', 'BEFORE "${PROJECT_SOURCE_DIR}"')
+  end
+  def put_cmake_mfc_atl_flag(config_info)
+    # Hmm, do we need to actively _reset_ CMAKE_MFC_FLAG / CMAKE_ATL_FLAG
+    # (i.e. _unconditionally_ set() it, even if it's 0),
+    # since projects in subdirs shouldn't inherit?
+    # Given the discussion at
+    # "[CMake] CMAKE_MFC_FLAG is inherited in subdirectory ?"
+    #   http://www.cmake.org/pipermail/cmake/2009-February/026896.html
+    # I'd strongly assume yes...
+    # See also "Re: [CMake] CMAKE_MFC_FLAG not working in functions"
+    #   http://www.mail-archive.com/cmake@cmake.org/msg38677.html
+
+    #if config_info.use_of_mfc > 0
+      write_set_var('CMAKE_MFC_FLAG', config_info.use_of_mfc)
+    #end
+    # ok, there's no CMAKE_ATL_FLAG yet, AFAIK, but still prepare
+    # for it (also to let people probe on this in hook includes)
+    #if config_info.use_of_atl > 0
+      # TODO: should also set the per-configuration-type variable variant
+      #write_new_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
+      write_set_var('CMAKE_ATL_FLAG', config_info.use_of_atl)
+    #end
+  end
+  def write_include_directories(arr_includes, map_includes)
+    # Side note: unfortunately CMake as of 2.8.7 probably still does not have
+    # a # way of specifying _per-configuration_ syntax of include_directories().
+    # See "[CMake] vcproj2cmake.rb script: announcing new version / hosting questions"
+    #   http://www.cmake.org/pipermail/cmake/2010-June/037538.html
+    #
+    # Side note #2: relative arguments to include_directories() (e.g. "..")
+    # are relative to CMAKE_PROJECT_SOURCE_DIR and _not_ BINARY,
+    # at least on Makefile and .vcproj.
+    # CMake dox currently don't offer such details... (yet!)
+    return if arr_includes.empty?
+    arr_includes_translated = Array.new
+    arr_includes.each { |elem_inc_dir|
+      elem_inc_dir = vs7_create_config_variable_translation(elem_inc_dir, @arr_config_var_handling)
+      arr_includes_translated.push(elem_inc_dir)
+    }
+    write_build_attributes('include_directories', arr_includes_translated, map_includes, nil)
+  end
+
+  def write_link_directories(arr_lib_dirs, map_lib_dirs)
+    arr_lib_dirs_translated = Array.new
+    arr_lib_dirs.each { |elem_lib_dir|
+      elem_lib_dir = vs7_create_config_variable_translation(elem_lib_dir, @arr_config_var_handling)
+      arr_lib_dirs_translated.push(elem_lib_dir)
+    }
+    arr_lib_dirs_translated.push('${V2C_LIB_DIRS}')
+    write_comment_at_level(3, \
+      "It is said to be much preferable to be able to use target_link_libraries()\n" \
+      "rather than the very unspecific link_directories()." \
+    )
+    write_build_attributes('link_directories', arr_lib_dirs_translated, map_lib_dirs, nil)
+  end
+  def write_directory_property_compile_flags(attr_opts)
+    return if attr_opts.nil?
+    write_empty_line()
+    # Query WIN32 instead of MSVC, since AFAICS there's nothing in the
+    # .vcproj to indicate tool specifics, thus these seem to
+    # be settings for ANY PARTICULAR tool that is configured
+    # on the Win32 side (.vcproj in general).
+    str_platform = 'WIN32'
+    write_conditional_if(str_platform)
+      write_command_single_line('set_property', "DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{attr_opts}")
+    write_conditional_end(str_platform)
+  end
+  # FIXME private!
+  def write_build_attributes(cmake_command, arr_defs, map_defs, cmake_command_arg)
+    # the container for the list of _actual_ dependencies as stated by the project
+    all_platform_defs = Hash.new
+    parse_platform_conversions(all_platform_defs, arr_defs, map_defs)
+    all_platform_defs.each { |key, arr_platdefs|
+      #log_info "arr_platdefs: #{arr_platdefs}"
+      next if arr_platdefs.empty?
+      arr_platdefs.uniq!
+      write_empty_line()
+      str_platform = key if not key.eql?('ALL')
+      write_conditional_if(str_platform)
+        write_command_list_quoted(cmake_command, cmake_command_arg, arr_platdefs)
+      write_conditional_end(str_platform)
+    }
+  end
+  def put_var_converter_script_location(script_location_relative_to_master)
+    # For the CMakeLists.txt rebuilder (automatic rebuild on file changes),
+    # add handling of a script file location variable, to enable users
+    # to override the script location if needed.
+    write_empty_line()
+    write_comment_at_level(1, \
+      "user override mechanism (allow defining custom location of script)" \
+    )
+    str_conditional = 'NOT V2C_SCRIPT_LOCATION'
+    write_conditional_if(str_conditional)
+      # NOTE: we'll make V2C_SCRIPT_LOCATION express its path via
+      # relative argument to global CMAKE_SOURCE_DIR and _not_ CMAKE_CURRENT_SOURCE_DIR,
+      # (this provision should even enable people to manually relocate
+      # an entire sub project within the source tree).
+      write_set_var('V2C_SCRIPT_LOCATION', "\"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\"")
+    write_conditional_end(str_conditional)
+  end
+  def write_func_v2c_post_setup(project_name, project_keyword, orig_project_file_basename)
+    # Rationale: keep count of generated lines of CMakeLists.txt to a bare minimum -
+    # call v2c_post_setup(), by simply passing all parameters that are _custom_ data
+    # of the current generated CMakeLists.txt file - all boilerplate handling functionality
+    # that's identical for each project should be implemented by the v2c_post_setup() function
+    # _internally_.
+    write_vcproj2cmake_func_comment()
+    if project_keyword.nil?
+	project_keyword = @v2c_attribute_not_provided_marker
+    end
+    arr_func_args = [ project_name, project_keyword, "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
+    write_command_list_quoted('v2c_post_setup', project_name, arr_func_args)
   end
 
   private
@@ -748,88 +808,12 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     )
     write_include('vcproj2cmake_func')
   end
-end
-
-class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
-  def initialize(out)
-    # FIXME: handle arr_config_var_handling appropriately
-    # (place the translated CMake commands somewhere suitable)
-    @arr_config_var_handling = Array.new
-    super(out)
-  end
-
-  def write_include_directories(arr_includes, map_includes)
-    # Side note: unfortunately CMake as of 2.8.7 probably still does not have
-    # a # way of specifying _per-configuration_ syntax of include_directories().
-    # See "[CMake] vcproj2cmake.rb script: announcing new version / hosting questions"
-    #   http://www.cmake.org/pipermail/cmake/2010-June/037538.html
-    #
-    # Side note #2: relative arguments to include_directories() (e.g. "..")
-    # are relative to CMAKE_PROJECT_SOURCE_DIR and _not_ BINARY,
-    # at least on Makefile and .vcproj.
-    # CMake dox currently don't offer such details... (yet!)
-    return if arr_includes.empty?
-    arr_includes_translated = Array.new
-    arr_includes.each { |elem_inc_dir|
-      elem_inc_dir = vs7_create_config_variable_translation(elem_inc_dir, @arr_config_var_handling)
-      arr_includes_translated.push(elem_inc_dir)
-    }
-    write_build_attributes('include_directories', arr_includes_translated, map_includes, nil)
-  end
-
-  def write_link_directories(arr_lib_dirs, map_lib_dirs)
-    arr_lib_dirs_translated = Array.new
-    arr_lib_dirs.each { |elem_lib_dir|
-      elem_lib_dir = vs7_create_config_variable_translation(elem_lib_dir, @arr_config_var_handling)
-      arr_lib_dirs_translated.push(elem_lib_dir)
-    }
-    arr_lib_dirs_translated.push('${V2C_LIB_DIRS}')
-    write_comment_at_level(3, \
-      "It is said to be much preferable to be able to use target_link_libraries()\n" \
-      "rather than the very unspecific link_directories()." \
-    )
-    write_build_attributes('link_directories', arr_lib_dirs_translated, map_lib_dirs, nil)
-  end
-  def write_directory_property_compile_flags(attr_opts)
-    return if attr_opts.nil?
-    write_empty_line()
-    # Query WIN32 instead of MSVC, since AFAICS there's nothing in the
-    # .vcproj to indicate tool specifics, thus these seem to
-    # be settings for ANY PARTICULAR tool that is configured
-    # on the Win32 side (.vcproj in general).
-    str_platform = 'WIN32'
-    write_conditional_if(str_platform)
-      write_command_single_line('set_property', "DIRECTORY APPEND PROPERTY COMPILE_FLAGS #{attr_opts}")
-    write_conditional_end(str_platform)
-  end
-  # FIXME private!
-  def write_build_attributes(cmake_command, arr_defs, map_defs, cmake_command_arg)
-    # the container for the list of _actual_ dependencies as stated by the project
-    all_platform_defs = Hash.new
-    parse_platform_conversions(all_platform_defs, arr_defs, map_defs)
-    all_platform_defs.each { |key, arr_platdefs|
-      #log_info "arr_platdefs: #{arr_platdefs}"
-      next if arr_platdefs.empty?
-      arr_platdefs.uniq!
-      write_empty_line()
-      str_platform = key if not key.eql?('ALL')
-      write_conditional_if(str_platform)
-        write_command_list_quoted(cmake_command, cmake_command_arg, arr_platdefs)
-      write_conditional_end(str_platform)
-    }
-  end
-  def write_func_v2c_post_setup(project_name, project_keyword, orig_project_file_basename)
-    # Rationale: keep count of generated lines of CMakeLists.txt to a bare minimum -
-    # call v2c_post_setup(), by simply passing all parameters that are _custom_ data
-    # of the current generated CMakeLists.txt file - all boilerplate handling functionality
-    # that's identical for each project should be implemented by the v2c_post_setup() function
-    # _internally_.
-    write_vcproj2cmake_func_comment()
-    if project_keyword.nil?
-	project_keyword = @v2c_attribute_not_provided_marker
-    end
-    arr_func_args = [ project_name, project_keyword, "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
-    write_command_list_quoted('v2c_post_setup', project_name, arr_func_args)
+  def put_hook_pre
+    # this CMakeLists.txt-global optional include could be used e.g.
+    # to skip the entire build of this file on certain platforms:
+    # if(PLATFORM) message(STATUS "not supported") return() ...
+    # (note that we appended CMAKE_MODULE_PATH _prior_ to this include()!)
+    write_include_optional('"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt"')
   end
 end
 
@@ -908,6 +892,24 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     }
     write_empty_line()
     write_list_quoted('SOURCES', arr_source_vars)
+  end
+  def put_hook_post_sources
+    write_include_optional('"${V2C_HOOK_POST_SOURCES}"')
+  end
+  def put_hook_post_definitions
+    write_empty_line()
+    write_comment_at_level(1, \
+	"hook include after all definitions have been made\n" \
+	"(but _before_ target is created using the source list!)" \
+    )
+    write_include_optional('"${V2C_HOOK_POST_DEFINITIONS}"')
+  end
+  def put_hook_post_target
+    write_empty_line()
+    write_comment_at_level(1, \
+      "e.g. to be used for tweaking target properties etc." \
+    )
+    write_include_optional('"${V2C_HOOK_POST_TARGET}"')
   end
   def write_target_executable
     write_command_single_line('add_executable', "#{@target.name} WIN32 ${SOURCES}")
@@ -1845,13 +1847,11 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 
       local_generator = V2C_CMakeLocalGenerator.new(out)
 
-      global_generator = V2C_CMakeGlobalGenerator.new(out)
+      local_generator.put_file_header()
 
-      global_generator.put_file_header()
+      local_generator.put_project(target.name)
 
-      # FIXME: these are all statements of the _project-local_ file,
-      # not any global ("solution") content!! --> move to local_generator.
-      global_generator.put_project(target.name)
+      #global_generator = V2C_CMakeGlobalGenerator.new(out)
 
       ## sub projects will inherit, and we _don't_ want that...
       # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
@@ -1859,9 +1859,9 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
       #syntax_generator.write_set_var('V2C_LIBS', '')
       #syntax_generator.write_set_var('V2C_SOURCES', '')
 
-      global_generator.put_include_MasterProjectDefaults_vcproj2cmake()
+      local_generator.put_include_MasterProjectDefaults_vcproj2cmake()
 
-      global_generator.put_hook_project()
+      local_generator.put_hook_project()
 
       target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
 
@@ -1879,9 +1879,9 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
         log_warn "#{target.name}: no source files at all!? (header-based project?)"
       end
 
-      global_generator.put_include_project_source_dir()
+      local_generator.put_include_project_source_dir()
 
-      global_generator.put_hook_post_sources()
+      target_generator.put_hook_post_sources()
 
       arr_config_info.each { |config_info_curr|
 	build_type_condition = ''
@@ -1899,7 +1899,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 	syntax_generator.write_empty_line()
 	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
 
-	global_generator.put_cmake_mfc_atl_flag(config_info_curr)
+	local_generator.put_cmake_mfc_atl_flag(config_info_curr)
 
 	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
 	  arr_includes = Array.new
@@ -1911,7 +1911,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 	}
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
-	global_generator.put_hook_post_definitions()
+	target_generator.put_hook_post_definitions()
 
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
@@ -1980,7 +1980,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
           end # target_is_valid
         end # not arr_sub_source_var_names.empty?
 
-	global_generator.put_hook_post_target()
+	target_generator.put_hook_post_target()
 
 	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
       } # [END per-config handling]
@@ -2020,7 +2020,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
         # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
       end # target_is_valid
 
-      global_generator.put_var_converter_script_location($script_location_relative_to_master)
+      local_generator.put_var_converter_script_location($script_location_relative_to_master)
       local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
 end
 
