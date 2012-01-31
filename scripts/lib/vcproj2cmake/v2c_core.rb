@@ -904,12 +904,80 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     )
     write_include_optional('"${V2C_HOOK_POST_DEFINITIONS}"')
   end
-  def put_hook_post_target
-    write_empty_line()
-    write_comment_at_level(1, \
-      "e.g. to be used for tweaking target properties etc." \
-    )
-    write_include_optional('"${V2C_HOOK_POST_TARGET}"')
+  # FIXME: not sure whether map_lib_dirs etc. should be passed in in such a raw way -
+  # probably mapping should already have been done at that stage...
+  def put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
+    # create a target only in case we do have any meat at all
+    #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
+    #if not arr_sub_source_var_names.empty?
+    if target.have_build_units
+
+      # first add source reference, then do linker setup, then create target
+
+      put_source_vars(arr_sub_source_var_names)
+
+      # write link_directories() (BEFORE establishing a target!)
+      config_info_curr.arr_linker_info.each { |linker_info_curr|
+        @localGenerator.write_link_directories(linker_info_curr.arr_lib_dirs, map_lib_dirs)
+      }
+
+      put_target_type(target, map_dependencies, config_info_curr)
+    end # target.have_build_units
+
+    put_hook_post_target()
+  end
+  def put_target_type(target, map_dependencies, config_info_curr)
+    target_is_valid = false
+
+    str_condition_no_target = "NOT TARGET #{target.name}"
+    write_conditional_if(str_condition_no_target)
+          # FIXME: should use a macro like rosbuild_add_executable(),
+          # http://www.ros.org/wiki/rosbuild/CMakeLists ,
+          # https://kermit.cse.wustl.edu/project/robotics/browser/trunk/vendor/ros/core/rosbuild/rosbuild.cmake?rev=3
+          # to be able to detect non-C++ file types within a source file list
+          # and add a hook to handle them specially.
+
+          # see VCProjectEngine ConfigurationTypes enumeration
+    case config_info_curr.type
+    when 1       # typeApplication (.exe)
+      target_is_valid = true
+      #syntax_generator.write_line("add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
+      # TODO: perhaps for real cross-platform binaries (i.e.
+      # console apps not needing a WinMain()), we should detect
+      # this and not use WIN32 in this case...
+      # Well, this probably is related to the .vcproj Keyword attribute ("Win32Proj", "MFCProj", "ATLProj", "MakeFileProj" etc.).
+      write_target_executable()
+    when 2    # typeDynamicLibrary (.dll)
+      target_is_valid = true
+      #syntax_generator.write_line("add_library_vcproj2cmake( #{target.name} SHARED ${SOURCES} )")
+      # add_library() docs: "If no type is given explicitly the type is STATIC or  SHARED
+      #                      based on whether the current value of the variable
+      #                      BUILD_SHARED_LIBS is true."
+      # --> Thus we would like to leave it unspecified for typeDynamicLibrary,
+      #     and do specify STATIC for explicitly typeStaticLibrary targets.
+      # However, since then the global BUILD_SHARED_LIBS variable comes into play,
+      # this is a backwards-incompatible change, thus leave it for now.
+      # Or perhaps make use of new V2C_TARGET_LINKAGE_{SHARED|STATIC}_LIB
+      # variables here, to be able to define "SHARED"/"STATIC" externally?
+      write_target_library_dynamic()
+    when 4    # typeStaticLibrary
+      target_is_valid = true
+      write_target_library_static()
+    when 0    # typeUnknown (utility)
+      log_warn "Project type 0 (typeUnknown - utility) is a _custom command_ type and thus probably cannot be supported easily. We will not abort and thus do write out a file, but it probably needs fixup (hook scripts?) to work properly. If this project type happens to use VCNMakeTool tool, then I would suggest to examine BuildCommandLine/ReBuildCommandLine/CleanCommandLine attributes for clues on how to proceed."
+    else
+    #when 10    # typeGeneric (Makefile) [and possibly other things...]
+      # TODO: we _should_ somehow support these project types...
+      log_fatal "Project type #{config_info_curr.type} not supported."
+    end
+    write_conditional_end(str_condition_no_target)
+
+    # write target_link_libraries() in case there's a valid target
+    if target_is_valid
+      config_info_curr.arr_linker_info.each { |linker_info_curr|
+        write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
+      }
+    end # target_is_valid
   end
   def write_target_executable
     write_command_single_line('add_executable', "#{@target.name} WIN32 ${SOURCES}")
@@ -924,6 +992,13 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     #write_new_line("add_library_vcproj2cmake( #{target.name} STATIC ${SOURCES} )")
     write_empty_line()
     write_command_single_line('add_library', "#{@target.name} STATIC ${SOURCES}")
+  end
+  def put_hook_post_target
+    write_empty_line()
+    write_comment_at_level(1, \
+      "e.g. to be used for tweaking target properties etc." \
+    )
+    write_include_optional('"${V2C_HOOK_POST_TARGET}"')
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
       write_conditional_if(str_platform)
@@ -1913,74 +1988,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
 	target_generator.put_hook_post_definitions()
 
-        # create a target only in case we do have any meat at all
-        #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
-        #if not arr_sub_source_var_names.empty?
-        if target.have_build_units
-
-          # first add source reference, then do linker setup, then create target
-
-	  target_generator.put_source_vars(arr_sub_source_var_names)
-
-	  # write link_directories() (BEFORE establishing a target!)
-	  config_info_curr.arr_linker_info.each { |linker_info_curr|
-	    local_generator.write_link_directories(linker_info_curr.arr_lib_dirs, map_lib_dirs)
-	  }
-
-	  target_is_valid = false
-
-	  str_condition_no_target = "NOT TARGET #{target.name}"
-	  syntax_generator.write_conditional_if(str_condition_no_target)
-          # FIXME: should use a macro like rosbuild_add_executable(),
-          # http://www.ros.org/wiki/rosbuild/CMakeLists ,
-          # https://kermit.cse.wustl.edu/project/robotics/browser/trunk/vendor/ros/core/rosbuild/rosbuild.cmake?rev=3
-          # to be able to detect non-C++ file types within a source file list
-          # and add a hook to handle them specially.
-
-          # see VCProjectEngine ConfigurationTypes enumeration
-    	  case config_info_curr.type
-          when 1       # typeApplication (.exe)
-	    target_is_valid = true
-            #syntax_generator.write_line("add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
-            # TODO: perhaps for real cross-platform binaries (i.e.
-            # console apps not needing a WinMain()), we should detect
-            # this and not use WIN32 in this case...
-	    # Well, this probably is related to the .vcproj Keyword attribute ("Win32Proj", "MFCProj", "ATLProj", "MakeFileProj" etc.).
-	    target_generator.write_target_executable()
-          when 2    # typeDynamicLibrary (.dll)
-	    target_is_valid = true
-            #syntax_generator.write_line("add_library_vcproj2cmake( #{target.name} SHARED ${SOURCES} )")
-            # add_library() docs: "If no type is given explicitly the type is STATIC or  SHARED
-            #                      based on whether the current value of the variable
-            #                      BUILD_SHARED_LIBS is true."
-            # --> Thus we would like to leave it unspecified for typeDynamicLibrary,
-            #     and do specify STATIC for explicitly typeStaticLibrary targets.
-            # However, since then the global BUILD_SHARED_LIBS variable comes into play,
-            # this is a backwards-incompatible change, thus leave it for now.
-            # Or perhaps make use of new V2C_TARGET_LINKAGE_{SHARED|STATIC}_LIB
-            # variables here, to be able to define "SHARED"/"STATIC" externally?
-	    target_generator.write_target_library_dynamic()
-          when 4    # typeStaticLibrary
-	    target_is_valid = true
-	    target_generator.write_target_library_static()
-          when 0    # typeUnknown (utility)
-            log_warn "Project type 0 (typeUnknown - utility) is a _custom command_ type and thus probably cannot be supported easily. We will not abort and thus do write out a file, but it probably needs fixup (hook scripts?) to work properly. If this project type happens to use VCNMakeTool tool, then I would suggest to examine BuildCommandLine/ReBuildCommandLine/CleanCommandLine attributes for clues on how to proceed."
-	  else
-          #when 10    # typeGeneric (Makefile) [and possibly other things...]
-            # TODO: we _should_ somehow support these project types...
-            log_fatal "Project type #{config_info_curr.type} not supported."
-          end
-	  syntax_generator.write_conditional_end(str_condition_no_target)
-
-	  # write target_link_libraries() in case there's a valid target
-          if target_is_valid
-	    config_info_curr.arr_linker_info.each { |linker_info_curr|
-	      target_generator.write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
-	    }
-          end # target_is_valid
-        end # not arr_sub_source_var_names.empty?
-
-	target_generator.put_hook_post_target()
+	target_generator.put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
 
 	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
       } # [END per-config handling]
