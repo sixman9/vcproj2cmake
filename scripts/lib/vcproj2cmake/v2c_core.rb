@@ -907,6 +907,8 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   # FIXME: not sure whether map_lib_dirs etc. should be passed in in such a raw way -
   # probably mapping should already have been done at that stage...
   def put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
+    target_is_valid = false
+
     # create a target only in case we do have any meat at all
     #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
     #if not arr_sub_source_var_names.empty?
@@ -921,10 +923,11 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
         @localGenerator.write_link_directories(linker_info_curr.arr_lib_dirs, map_lib_dirs)
       }
 
-      put_target_type(target, map_dependencies, config_info_curr)
+      target_is_valid = put_target_type(target, map_dependencies, config_info_curr)
     end # target.have_build_units
 
     put_hook_post_target()
+    return target_is_valid
   end
   def put_target_type(target, map_dependencies, config_info_curr)
     target_is_valid = false
@@ -978,6 +981,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
         write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
       }
     end # target_is_valid
+    return target_is_valid
   end
   def write_target_executable
     write_command_single_line('add_executable', "#{@target.name} WIN32 ${SOURCES}")
@@ -1988,7 +1992,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
 	target_generator.put_hook_post_definitions()
 
-	target_generator.put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
+	target_is_valid = target_generator.put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
 
 	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
       } # [END per-config handling]
