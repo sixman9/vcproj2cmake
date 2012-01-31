@@ -154,11 +154,11 @@ end
 # Ordering should definitely be _first_ current project,
 # _then_ global settings (a local project may have specific
 # settings which should _override_ the global defaults).
-def read_mappings_combined(filename_mappings, mappings)
+def read_mappings_combined(filename_mappings, mappings, master_project_dir)
   read_mappings(filename_mappings, mappings)
-  return if not $master_project_dir
+  return if not master_project_dir
   # read common mappings (in source root) to be used by all sub projects
-  read_mappings("#{$master_project_dir}/#{filename_mappings}", mappings)
+  read_mappings("#{master_project_dir}/#{filename_mappings}", mappings)
 end
 
 def push_platform_defn(platform_defs, platform, defn_value)
@@ -321,8 +321,9 @@ class V2C_Target
 end
 
 class V2C_BaseGlobalGenerator
-  def initialize
+  def initialize(master_project_dir)
     @filename_map_inc = "#{$v2c_config_dir_local}/include_mappings.txt"
+    @master_project_dir = master_project_dir
     @map_includes = Hash.new
     read_mappings_includes()
   end
@@ -334,7 +335,7 @@ class V2C_BaseGlobalGenerator
   def read_mappings_includes
     # These mapping files may contain things such as mapping .vcproj "Vc7/atlmfc/src/mfc"
     # into CMake "SYSTEM ${MFC_INCLUDE}" information.
-    read_mappings_combined(@filename_map_inc, @map_includes)
+    read_mappings_combined(@filename_map_inc, @map_includes, @master_project_dir)
   end
 end
 
@@ -728,7 +729,7 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     # This also contains vcproj2cmake helper modules (these should - just like the CMakeLists.txt -
     # be within the project tree as well, since someone might want to copy the entire project tree
     # including .vcproj conversions to a different machine, thus all v2c components should be available)
-    #write_new_line("set(V2C_MASTER_PROJECT_DIR \"#{$master_project_dir}\")")
+    #write_new_line("set(V2C_MASTER_PROJECT_DIR \"#{@master_project_dir}\")")
     write_empty_line()
     write_set_var('V2C_MASTER_PROJECT_DIR', '"${CMAKE_SOURCE_DIR}"')
     # NOTE: use set() instead of list(APPEND...) to _prepend_ path
@@ -1815,7 +1816,7 @@ def cmake_get_config_info_condition_var_name(config_info)
   return "v2c_want_buildcfg_#{config_name}"
 end
 
-def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr_config_info)
+def project_generate_cmake(p_master_project, orig_proj_file_basename, out, target, main_files, arr_config_info)
       if target.nil?
         log_fatal 'invalid target'
       end
@@ -1825,13 +1826,14 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 
       target_is_valid = false
 
-      generator_base = V2C_BaseGlobalGenerator.new
+      master_project_dir = p_master_project.to_s
+      generator_base = V2C_BaseGlobalGenerator.new(master_project_dir)
       map_lib_dirs = Hash.new
-      read_mappings_combined($filename_map_lib_dirs, map_lib_dirs)
+      read_mappings_combined($filename_map_lib_dirs, map_lib_dirs, master_project_dir)
       map_dependencies = Hash.new
-      read_mappings_combined($filename_map_dep, map_dependencies)
+      read_mappings_combined($filename_map_dep, map_dependencies, master_project_dir)
       map_defines = Hash.new
-      read_mappings_combined($filename_map_def, map_defines)
+      read_mappings_combined($filename_map_def, map_defines, master_project_dir)
 
       syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
 
@@ -2023,7 +2025,8 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 end
 
 class V2C_CMakeGenerator
-  def initialize(orig_proj_file_basename, cmakelists_output_file, arr_targets, arr_config_info)
+  def initialize(p_master_project, orig_proj_file_basename, cmakelists_output_file, arr_targets, arr_config_info)
+    @p_master_project = p_master_project
     @orig_proj_file_basename = orig_proj_file_basename
     @cmakelists_output_file = cmakelists_output_file
     @arr_targets = arr_targets
@@ -2035,7 +2038,7 @@ class V2C_CMakeGenerator
       tmpfile = Tempfile.new('vcproj2cmake')
 
       File.open(tmpfile.path, 'w') { |out|
-        project_generate_cmake(@orig_proj_file_basename, out, target, $main_files, @arr_config_info)
+        project_generate_cmake(@p_master_project, @orig_proj_file_basename, out, target, $main_files, @arr_config_info)
 
         # Close file, since Fileutils.mv on an open file will barf on XP
         out.close
@@ -2100,9 +2103,6 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
   # HACK: make project_dir a global variable...
   $project_dir = project_dir
 
-  # HACK: create global $master_project_dir variable...
-  $master_project_dir = p_master_project.to_s
-
   #p_project_dir = Pathname.new($project_dir)
   #p_cmakelists = Pathname.new(output_file)
   #cmakelists_dir = p_cmakelists.dirname
@@ -2132,7 +2132,7 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
   generator_project_filename = p_generator_proj_file.to_s
   generator = nil
   if true
-    generator = V2C_CMakeGenerator.new(orig_proj_file_basename, generator_project_filename, arr_targets, arr_config_info)
+    generator = V2C_CMakeGenerator.new(p_master_project, orig_proj_file_basename, generator_project_filename, arr_targets, arr_config_info)
   end
 
   if not generator.nil?
