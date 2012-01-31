@@ -4,7 +4,7 @@
 $v2c_debug = false
 
 # Initial number of spaces for indenting
-$v2c_generator_indent_num_spaces = 0
+v2c_generator_indent_num_spaces = 0
 
 # Number of spaces to increment by
 $v2c_generator_indent_step = 2
@@ -346,17 +346,14 @@ $cmake_env_var_match_regex = '\\$ENV\\{[[:alnum:]_]+\\}'
 # we cannot have indent_now as class member since we'd have multiple
 # disconnected instances... (TODO: implement it as class-static member
 # variable?)
-$indent_now = $v2c_generator_indent_num_spaces
+$indent_now = v2c_generator_indent_num_spaces
 
 # Contains functionality common to _any_ file-based generator
-class V2C_TextFileSyntaxGeneratorBase
-  def initialize
-    @indent_step = $v2c_generator_indent_step
+class V2C_TextStreamSyntaxGeneratorBase
+  def initialize(out, indent_step)
+    @out = out
+    @indent_step = indent_step
     @comments_level = $v2c_generated_comments_level
-
-    # internal CMake generator helpers
-    @vcproj2cmake_func_cmake = 'vcproj2cmake_func.cmake'
-    @v2c_attribute_not_provided_marker = 'V2C_NOT_PROVIDED'
   end
 
   def generated_comments_level
@@ -373,12 +370,34 @@ class V2C_TextFileSyntaxGeneratorBase
   def indent_less
     $indent_now -= @indent_step
   end
+
+  def write_block(block)
+    block.split("\n").each { |line|
+      write_line(line)
+    }
+  end
+  def write_line(part)
+    @out.print ' ' * get_indent()
+    @out.puts part
+  end
+
+  def write_empty_line
+    @out.puts
+  end
+  def write_new_line(part)
+    write_empty_line()
+    write_line(part)
+  end
 end
 
-class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
+class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
   def initialize(out)
-    super()
-    @out = out
+    super(out, $v2c_generator_indent_step)
+    @streamout = self # reference to the stream output handler; to be changed into something that is being passed in externally, for the _one_ file that we (and other generators) are working on
+
+    # internal CMake generator helpers
+    @vcproj2cmake_func_cmake = 'vcproj2cmake_func.cmake'
+    @v2c_attribute_not_provided_marker = 'V2C_NOT_PROVIDED'
   end
 
   def write_comment_at_level(level, block)
@@ -416,24 +435,6 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
   end
   def write_list_quoted(list_var_name, arr_elems)
     write_command_list_quoted('set', list_var_name, arr_elems)
-  end
-
-  def write_block(block)
-    block.split("\n").each { |line|
-      write_line(line)
-    }
-  end
-  def write_line(part)
-    @out.print ' ' * get_indent()
-    @out.puts part
-  end
-
-  def write_empty_line
-    @out.puts
-  end
-  def write_new_line(part)
-    write_empty_line()
-    write_line(part)
   end
 
   # WIN32, MSVC, ...
@@ -556,6 +557,9 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
 end
 
 class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
+  def initialize(out)
+    super(out)
+  end
   def put_file_header
     put_file_header_temporary_marker()
     put_file_header_cmake_minimum_version()
@@ -654,9 +658,6 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
     write_conditional_end(str_conditional)
   end
 
-  def initialize(out)
-    super(out)
-  end
   def put_include_MasterProjectDefaults_vcproj2cmake
     if generated_comments_level() >= 2
       @out.puts %{\
