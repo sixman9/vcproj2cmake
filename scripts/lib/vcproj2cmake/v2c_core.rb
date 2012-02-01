@@ -71,6 +71,14 @@ plugin_parser_vs10.extension_name = 'vcxproj'
 
 V2C_Core_Add_Plugin_Parser(plugin_parser_vs10)
 
+plugin_parser_vs7_vfproj = V2C_Core_Plugin_Info_Parser.new
+
+plugin_parser_vs7_vfproj.version = 1
+plugin_parser_vs7_vfproj.parser_name = 'Visual Studio 7+ (Fortran .vfproj)'
+plugin_parser_vs7_vfproj.extension_name = 'vfproj'
+
+V2C_Core_Add_Plugin_Parser(plugin_parser_vs7_vfproj)
+
 
 #*******************************************************************************************************
 
@@ -292,10 +300,13 @@ class V2C_SCC_Info
   attr_accessor :aux_path
 end
 
+# Well, in fact in Visual Studio, "target" and "project"
+# seem to be pretty much synonymous...
 class V2C_Target
   def initialize
     @type = nil # project type
     @name = nil
+    @creator = nil
     @guid = nil
     @root_namespace = nil
     @version = nil
@@ -312,6 +323,7 @@ class V2C_Target
 
   attr_accessor :type
   attr_accessor :name
+  attr_accessor :creator
   attr_accessor :guid
   attr_accessor :root_namespace
   attr_accessor :version
@@ -586,9 +598,15 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     put_include_vcproj2cmake_func()
     put_hook_pre()
   end
-  def put_project(project_name)
-    # TODO: figure out language type (C CXX etc.) and add it to project() command
-    write_command_single_line('project', project_name)
+  def put_project(project_name, arr_languages = nil)
+    log_fatal 'missing project name' if project_name.nil?
+    project_name_and_attrs = project_name
+    if not arr_languages.nil?
+      arr_languages.each { |elem_lang|
+        project_name_and_attrs += " #{elem_lang}"
+      }
+    end
+    write_command_single_line('project', project_name_and_attrs)
   end
   def put_include_MasterProjectDefaults_vcproj2cmake
     if generated_comments_level() >= 2
@@ -885,9 +903,9 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       arr_sub_sources_for_parent.push(sources_variable)
     end
   end
-  def put_source_vars(arr_sub_source_var_names)
+  def put_source_vars(arr_sub_source_list_var_names)
     arr_source_vars = Array.new
-    arr_sub_source_var_names.each { |sources_elem|
+    arr_sub_source_list_var_names.each { |sources_elem|
 	arr_source_vars.push("${#{sources_elem}}")
     }
     write_empty_line()
@@ -906,17 +924,17 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
   # FIXME: not sure whether map_lib_dirs etc. should be passed in in such a raw way -
   # probably mapping should already have been done at that stage...
-  def put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
+  def put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
     target_is_valid = false
 
     # create a target only in case we do have any meat at all
     #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
-    #if not arr_sub_source_var_names.empty?
+    #if not arr_sub_source_list_var_names.empty?
     if target.have_build_units
 
       # first add source reference, then do linker setup, then create target
 
-      put_source_vars(arr_sub_source_var_names)
+      put_source_vars(arr_sub_source_list_var_names)
 
       # write link_directories() (BEFORE establishing a target!)
       config_info_curr.arr_linker_info.each { |linker_info_curr|
@@ -1420,7 +1438,11 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
         @target.vs_keyword = attr_value
       when 'Name'
         @target.name = attr_value
-      when 'ProjectGUID'
+      when 'ProjectCreator' # used by Fortran .vfproj ("Intel Fortran")
+        @target.creator = attr_value
+      when 'ProjectGUID' # used by Visual C++ .vcproj
+        @target.guid = attr_value
+      when 'ProjectIdGuid' # used by Fortran .vfproj
         @target.guid = attr_value
       when 'ProjectType'
         @target.type = attr_value
@@ -1566,7 +1588,7 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
 	  config_info_curr.arr_compiler_info.push(compiler_info)
         }
 
-        #if not arr_sub_source_var_names.empty?
+        #if not arr_sub_source_list_var_names.empty?
         if target.have_build_units
 	  # parse linker configuration...
           config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
@@ -1928,7 +1950,16 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 
       local_generator.put_file_header()
 
-      local_generator.put_project(target.name)
+      # TODO: figure out language type (C CXX etc.) and add it to project() command
+      # ok, let's try some initial Q&D handling...
+      arr_languages = nil
+      if not target.creator.nil?
+        if target.creator.match(/Fortran/)
+          arr_languages = Array.new
+          arr_languages.push('Fortran')
+        end
+      end
+      local_generator.put_project(target.name, arr_languages)
 
       #global_generator = V2C_CMakeGlobalGenerator.new(out)
 
@@ -1944,16 +1975,17 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 
       target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
 
-      arr_sub_source_var_names = Array.new
-      target_generator.put_file_list(target.name, main_files, nil, arr_sub_source_var_names)
+      # arr_sub_source_list_var_names will receive the names of the individual source list variables:
+      arr_sub_source_list_var_names = Array.new
+      target_generator.put_file_list(target.name, main_files, nil, arr_sub_source_list_var_names)
 
-      if not arr_sub_source_var_names.empty?
+      if not arr_sub_source_list_var_names.empty?
         # add a ${V2C_SOURCES} variable to the list, to be able to append
         # all sorts of (auto-generated, ...) files to this list within
         # hook includes.
 	# - _right before_ creating the target with its sources
 	# - and not earlier since earlier .vcproj-defined variables should be clean (not be made to contain V2C_SOURCES contents yet)
-        arr_sub_source_var_names.push('V2C_SOURCES')
+        arr_sub_source_list_var_names.push('V2C_SOURCES')
       else
         log_warn "#{target.name}: no source files at all!? (header-based project?)"
       end
@@ -1992,7 +2024,7 @@ def project_generate_cmake(p_master_project, orig_proj_file_basename, out, targe
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
 	target_generator.put_hook_post_definitions()
 
-	target_is_valid = target_generator.put_target(target, arr_sub_source_var_names, map_lib_dirs, map_dependencies, config_info_curr)
+	target_is_valid = target_generator.put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
 
 	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
       } # [END per-config handling]
@@ -2132,6 +2164,9 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
   # Q&D parser switch...
   parser = nil
   if parser_project_filename.match(/.vcproj$/)
+    parser = V2C_VS7ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
+  elsif parser_project_filename.match(/.vfproj$/)
+    log_warn 'Detected Fortran .vfproj - parsing is VERY experimental, needs much more work!'
     parser = V2C_VS7ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
   elsif parser_project_filename.match(/.vcxproj$/)
     parser = V2C_VS10ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
