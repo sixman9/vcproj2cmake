@@ -7,17 +7,29 @@ require 'pathname'
 # HACK: have $script_dir as global variable currently
 $script_dir = File.dirname(__FILE__)
 
-$LOAD_PATH.unshift($script_dir + '/.') unless $LOAD_PATH.include?($script_dir + '/.')
-$LOAD_PATH.unshift($script_dir + '/./lib') unless $LOAD_PATH.include?($script_dir + '/./lib')
+def tweak_load_path
+  script_dir_lookup = $script_dir.clone
 
-#puts "LOAD_PATH: #{$LOAD_PATH.inspect}\n" # nice debugging
+  script_dir_lookup += '/.'
+  $LOAD_PATH.unshift(script_dir_lookup) unless $LOAD_PATH.include?(script_dir_lookup)
+  script_dir_lookup += '/lib'
+  $LOAD_PATH.unshift(script_dir_lookup) unless $LOAD_PATH.include?(script_dir_lookup)
 
-require 'vcproj2cmake/util_file' # V2C_Util_File.mkdir_p()
+  #puts "LOAD_PATH: #{$LOAD_PATH.inspect}\n" # nice debugging
+end
+
+tweak_load_path()
 
 # load common settings
 load 'vcproj2cmake_settings.rb'
 
 require 'vcproj2cmake/v2c_core' # (currently) large amount of random "core" functionality
+
+require 'vcproj2cmake/util_file' # V2C_Util_File.mkdir_p()
+
+################
+#     MAIN     #
+################
 
 script_fqpn = File.expand_path $0
 script_path = Pathname.new(script_fqpn).parent

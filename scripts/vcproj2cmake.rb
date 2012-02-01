@@ -66,8 +66,18 @@ require 'find' # Find.find()
 # HACK: have $script_dir as global variable currently
 $script_dir = File.dirname(__FILE__)
 
-$LOAD_PATH.unshift($script_dir + '/.') unless $LOAD_PATH.include?($script_dir + '/.')
-$LOAD_PATH.unshift($script_dir + '/./lib') unless $LOAD_PATH.include?($script_dir + '/./lib')
+def tweak_load_path
+  script_dir_lookup = $script_dir.clone
+
+  script_dir_lookup += '/.'
+  $LOAD_PATH.unshift(script_dir_lookup) unless $LOAD_PATH.include?(script_dir_lookup)
+  script_dir_lookup += '/lib'
+  $LOAD_PATH.unshift(script_dir_lookup) unless $LOAD_PATH.include?(script_dir_lookup)
+
+  #puts "LOAD_PATH: #{$LOAD_PATH.inspect}\n" # nice debugging
+end
+
+tweak_load_path()
 
 # load common settings
 load 'vcproj2cmake_settings.rb'
@@ -108,8 +118,8 @@ else
        vcproj_filename = vcproj_filename_test
        break
      else
-        # The first argument on the command-line did not have a '.vcproj' extension.
-        # If the local directory contains file "ARGV[0].vcproj" then use it, else error.
+        # The first argument on the command-line did not have any the project file extension which the current parser supports.
+        # If the local directory contains file "ARGV[0].<project_extension>" then use it, else error.
         # (Note:  Only '+' works here for concatenation, not '<<'.)
         vcproj_filename_test += parser_extension
   
@@ -147,13 +157,6 @@ project input file can e.g. have .vcproj or .vcxproj extension.
 
    exit 1
 end
-
-# TODO: create the proper parser object!
-# "Dynamically instantiate a class"
-#   http://www.ruby-forum.com/topic/141758
-
-#if File.extname(vcproj_filename) == '.vcproj'
-#end
 
 # Process the optional command-line arguments
 # -------------------------------------------
