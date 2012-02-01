@@ -192,6 +192,9 @@ Find.find('./') do
     #puts "REBUILD #{f}!! #{rebuild}"
   end
   #puts "#{f}/#{projfile}"
+
+  # We _really_ don't want to do external spawning of a new vcproj2cmake.rb session,
+  # since Ruby startup latency is extremely high (3 seconds startup vs. 0.3 seconds payload compute time with our script!)
   externally_spawned = false
   if externally_spawned
     # see "A dozen (or so) ways to start sub-processes in Ruby: Part 1"
@@ -200,6 +203,8 @@ Find.find('./') do
     puts "output was:"
     puts output
   else
+    # TODO!! Should collect the list of projects to convert, then call v2c_convert_project_outer() multi-threaded! (although threading is said to be VERY slow in Ruby - but still it should provide some sizeable benefit).
+    # FIXME: to be able to do this, we need to get rid of some dirty global variables within per-project parser/generator handling!
     v2c_convert_project_outer("#{script_path}/vcproj2cmake.rb", "#{f}/#{projfile}", "#{f}/CMakeLists.txt", source_root)
   end
 
