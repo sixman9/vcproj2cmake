@@ -1417,7 +1417,7 @@ end
 
 class V2C_VSParserBase
   def unknown_element(elem_name)
-    log_error "unknown XML element (#{elem_name})!"
+    log_error "unknown/incorrect XML element (#{elem_name})!"
   end
 end
 
@@ -1450,61 +1450,16 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     @arr_config_info = arr_config_info
   end
   def parse
-    @project_xml.attributes.each_attribute { |attr_xml|
-      attr_value = attr_xml.value
-      case attr_xml.name
-      when 'Keyword'
-        @target.vs_keyword = attr_value
-      when 'Name'
-        @target.name = attr_value
-      when 'ProjectCreator' # used by Fortran .vfproj ("Intel Fortran")
-        @target.creator = attr_value
-      when 'ProjectGUID' # used by Visual C++ .vcproj
-        @target.guid = attr_value
-      when 'ProjectIdGuid' # used by Fortran .vfproj
-        @target.guid = attr_value
-      when 'ProjectType'
-        @target.type = attr_value
-      when 'RootNamespace'
-        @target.root_namespace = attr_value
-      when 'Version'
-        @target.version = attr_value
+    parse_project_attributes
 
-      # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
-      # exist, too... (one project had SccProvider missing). HOWEVER,
-      # CMake generator does expect all three to exist when available! Hmm.
-      when 'SccProjectName'
-        @target.scc_info.project_name = attr_value
-      # There's a special SAK (Should Already Know) entry marker
-      # (see e.g. http://stackoverflow.com/a/6356615 ).
-      # Currently I don't believe we need to handle "SAK" in special ways
-      # (such as filling it in in case of missing entries),
-      # transparent handling ought to be sufficient.
-      when 'SccLocalPath'
-        @target.scc_info.local_path = attr_value
-      when 'SccProvider'
-        @target.scc_info.provider = attr_value
-      when 'SccAuxPath'
-        @target.scc_info.aux_path = attr_value
-      else
-        unknown_element(attr_xml.name)
-      end
-    }
         #### DIRT START #####
         global_parser = V2C_VS7Parser.new
   
         configuration_types = Array.new
-        vs7_get_configuration_types(@project_xml, configuration_types)
-  
         $have_build_units = false
   
         $main_files = Files_str.new
-        @project_xml.elements.each('Files') { |files_xml|
-          vs7_parse_file_list(@target.name, files_xml, $main_files)
-        }
-  
-        @target.have_build_units = $have_build_units
-  
+
         # ARGH, we have an issue with CMake not being fully up to speed with
         # multi-configuration generators (e.g. .vcproj):
         # it should be able to declare _all_ configuration-dependent settings
@@ -1529,6 +1484,19 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
             $config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
   	  end
         end
+  
+        vs7_get_configuration_types(@project_xml, configuration_types)
+  
+        @project_xml.elements.each { |elem_xml|
+          case elem_xml.name
+          when 'Files'
+            vs7_parse_file_list(@target.name, elem_xml, $main_files)
+          else
+            unknown_element(elem_xml.name)
+          end
+        }
+  
+        @target.have_build_units = $have_build_units
   
         # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
         # (or, in other words, different configs are capable of generating _different_ target _types_
@@ -1613,6 +1581,48 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
           @arr_config_info.push(config_info_curr)
         }
         #### DIRT END #####
+  end
+  def parse_project_attributes
+    @project_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'Keyword'
+        @target.vs_keyword = attr_value
+      when 'Name'
+        @target.name = attr_value
+      when 'ProjectCreator' # used by Fortran .vfproj ("Intel Fortran")
+        @target.creator = attr_value
+      when 'ProjectGUID' # used by Visual C++ .vcproj
+        @target.guid = attr_value
+      when 'ProjectIdGuid' # used by Fortran .vfproj
+        @target.guid = attr_value
+      when 'ProjectType'
+        @target.type = attr_value
+      when 'RootNamespace'
+        @target.root_namespace = attr_value
+      when 'Version'
+        @target.version = attr_value
+
+      # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+      # exist, too... (one project had SccProvider missing). HOWEVER,
+      # CMake generator does expect all three to exist when available! Hmm.
+      when 'SccProjectName'
+        @target.scc_info.project_name = attr_value
+      # There's a special SAK (Should Already Know) entry marker
+      # (see e.g. http://stackoverflow.com/a/6356615 ).
+      # Currently I don't believe we need to handle "SAK" in special ways
+      # (such as filling it in in case of missing entries),
+      # transparent handling ought to be sufficient.
+      when 'SccLocalPath'
+        @target.scc_info.local_path = attr_value
+      when 'SccProvider'
+        @target.scc_info.provider = attr_value
+      when 'SccAuxPath'
+        @target.scc_info.aux_path = attr_value
+      else
+        unknown_element(attr_xml.name)
+      end
+    }
   end
 end
 
