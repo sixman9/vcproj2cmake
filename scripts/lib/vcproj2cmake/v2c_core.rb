@@ -226,7 +226,19 @@ end
 #   then generates project files by iterating over the targets via a newly generated target generator each.
 # target generator: generates targets. This is the one creating/producing the output file stream. Not provided by all generators (VS10 yes, VS7 no).
 
-class V2C_Info_Include_Dir
+class V2C_Info_Condition
+  def initialize(str_condition)
+    @str_condition = str_condition
+  end
+end
+
+class V2C_Info_Elem_Base
+  def initialize
+    @condition = nil # V2C_Info_Condition
+  end
+end
+
+class V2C_Info_Include_Dir < V2C_Info_Elem_Base
   def initialize
     @dir = String.new
     @attr_after = 0
@@ -239,7 +251,7 @@ class V2C_Info_Include_Dir
   attr_accessor :attr_system
 end
 
-class V2C_Compiler_Info
+class V2C_Tool_Compiler_Info
   def initialize
     @arr_flags = Array.new
     @arr_info_include_dirs = Array.new
@@ -250,7 +262,7 @@ class V2C_Compiler_Info
   attr_accessor :hash_defines
 end
 
-class V2C_Linker_Info
+class V2C_Tool_Linker_Info
   def initialize
     @arr_dependencies = Array.new
     @arr_lib_dirs = Array.new
@@ -264,7 +276,7 @@ class V2C_Config_Info
     @name = 0 # WARNING: it may contain spaces!
     @platform = 0 # FIXME: not yet supported by VS7 parser!
     @type = 0
-    @use_of_mfc = 0
+    @use_of_mfc = 0 # TODO: perhaps make ATL/MFC values an enum?
     @use_of_atl = 0
     @arr_compiler_info = Array.new
     @arr_linker_info = Array.new
@@ -1137,6 +1149,8 @@ end
 # XML support as required by VS7+/VS10 parsers:
 require 'rexml/document'
 
+# See "Format of a .vcproj File" http://msdn.microsoft.com/en-us/library/2208a1f2%28v=vs.71%29.aspx
+
 $vs7_prop_var_scan_regex = '\\$\\(([[:alnum:]_]+)\\)'
 $vs7_prop_var_match_regex = '\\$\\([[:alnum:]_]+\\)'
 
@@ -1203,6 +1217,7 @@ def vs7_parse_file(project_name, file_xml, arr_sources)
 
   # Ignore files which have the ExcludedFromBuild attribute set to TRUE
   excluded_from_build = false
+  # FIXME: for FileConfiguration, should make use of V2C_VS7ConfigurationParser as well!!
   file_xml.elements.each('FileConfiguration') { |file_config_xml|
     #file_config.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
     #  if compiler_xml.attributes['UsePrecompiledHeader']
@@ -1397,6 +1412,147 @@ class V2C_VS7ProjectParserBase < V2C_VSProjectParserBase
   end
 end
 
+class V2C_VS7ToolParser < V2C_VSParserBase
+  def initialize(tool_xml, config_info_out)
+    @tool_xml = tool_xml
+    @config_info = config_info_out
+  end
+  def parse
+  end
+end
+
+class V2C_VS7ConfigurationParser < V2C_VSParserBase
+  def initialize(config_xml, arr_config_info_out)
+    @config_xml = config_xml
+    @arr_config_info = arr_config_info_out
+  end
+  def parse
+    config_info_curr = V2C_Config_Info.new
+
+    config_info_curr.name = vs7_get_config_name(@config_xml)
+
+    parse_attributes(config_info_curr)
+
+    parse_elements(config_info_curr)
+
+    @arr_config_info.push(config_info_curr)
+  end
+  def parse_attributes(config_info)
+    @config_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'ConfigurationType'
+        config_info.type = attr_value.to_i
+      when 'UseOfMFC'
+        # 0 == no MFC
+        # 1 == static MFC
+        # 2 == shared MFC
+        # VS7 does not seem to use string values (only 0/1/2 integers), while VS10 additionally does.
+        # FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
+        # --> we probably should _not_ switch to case insensitive matching on
+        # attributes (see e.g.
+        # http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
+        # but rather implement version-specific parser classes due to
+        # the differing XML configurations
+        # (e.g. do this via a common base class, then add derived ones
+        # to implement any differences).
+        config_info.use_of_mfc = attr_value.to_i
+      when 'UseOfATL'
+        config_info.use_of_atl = attr_value.to_i
+      else
+        unknown_element(attr_xml.name)
+      end
+    }
+  end
+  def parse_elements(config_info)
+    @config_xml.elements.each { |elem_xml|
+      elem_parser = nil # IMPORTANT: reset it!
+      case elem_xml.name
+      when 'Tool'
+        elem_parser = V2C_VS7ToolParser.new(elem_xml, config_info)
+      else
+        unknown_element(elem_xml.name)
+      end
+      if not elem_parser.nil?
+        elem_parser.parse
+      end
+    }
+
+    @config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
+    	    global_parser = V2C_VS7Parser.new
+
+	    compiler_info = V2C_Tool_Compiler_Info.new
+	    arr_includes = Array.new
+	    global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes)
+	    arr_includes.each { |inc_dir|
+	      info_inc_dir = V2C_Info_Include_Dir.new
+	      info_inc_dir.dir = inc_dir
+	      compiler_info.arr_info_include_dirs.push(info_inc_dir)
+	    }
+
+	    global_parser.read_compiler_preprocessor_definitions(compiler_xml, compiler_info.hash_defines)
+      if config_info.use_of_mfc == 2
+        compiler_info.hash_defines['_AFXEXT'] = ''
+	      compiler_info.hash_defines['_AFXDLL'] = ''
+      end
+
+      attr_opts = compiler_xml.attributes['AdditionalOptions']
+	    # Oh well, we might eventually want to provide a full-scale
+	    # translation of various compiler switches to their
+	    # counterparts on compilers of various platforms, but for
+	    # now, let's simply directly pass them on to the compiler when on
+	    # Win32 platform.
+	    if not attr_opts.nil?
+	      # I don't think we need this (we have per-target properties), thus we'll NOT write it!
+	      #local_generator.write_directory_property_compile_flags(attr_opts)
+   
+  	      # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
+	      # simply make reverse use of existing translation table in CMake source.
+	      compiler_info.arr_flags = attr_opts.split(';')
+      end
+
+	    config_info.arr_compiler_info.push(compiler_info)
+    }
+
+    # parse linker configuration...
+    @config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
+      global_parser = V2C_VS7Parser.new
+
+      linker_info_curr = V2C_Tool_Linker_Info.new
+      arr_dependencies_curr = linker_info_curr.arr_dependencies
+      global_parser.read_linker_additional_dependencies(linker_xml, arr_dependencies_curr)
+      arr_lib_dirs_curr = linker_info_curr.arr_lib_dirs
+      global_parser.read_linker_additional_library_directories(linker_xml, arr_lib_dirs_curr)
+      # TODO: support AdditionalOptions! (mention via
+      # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
+      # depending on target type, and make sure to filter out options pre-defined by CMake platform
+      # setup modules)
+      config_info.arr_linker_info.push(linker_info_curr)
+    }
+  end
+end
+
+class V2C_VS7ConfigurationsParser < V2C_VSParserBase
+  def initialize(configs_xml, arr_config_info_out)
+    @configs_xml = configs_xml
+    @arr_config_info = arr_config_info_out
+  end
+  def parse
+    @configs_xml.elements.each { |elem_xml|
+      elem_parser = nil # IMPORTANT: reset it!
+      case elem_xml.name
+      when 'Configuration'
+        elem_parser = V2C_VS7ConfigurationParser.new(elem_xml, @arr_config_info)
+      else
+        unknown_element(elem_xml.name)
+      end
+      if not elem_parser.nil?
+        elem_parser.parse
+      end
+    }
+  end
+end
+
 class V2C_VS7FilesParser < V2C_VSParserBase
   def initialize(files_xml, target_out)
     @files_xml = files_xml
@@ -1463,144 +1619,59 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     @arr_config_info = arr_config_info
   end
   def parse
-    parse_project_attributes
+    parse_attributes
 
-        #### DIRT START #####
-        global_parser = V2C_VS7Parser.new
+    configuration_types = Array.new
+    $have_build_units = false
   
-        configuration_types = Array.new
-        $have_build_units = false
-  
-        $main_files = Files_str.new
+    $main_files = Files_str.new
 
-        # ARGH, we have an issue with CMake not being fully up to speed with
-        # multi-configuration generators (e.g. .vcproj):
-        # it should be able to declare _all_ configuration-dependent settings
-        # in a .vcproj file as configuration-dependent variables
-        # (just like set_property(... COMPILE_DEFINITIONS_DEBUG ...)),
-        # but with configuration-specific(!) include directories on .vcproj side,
-        # there's currently only a _generic_ include_directories() command :-(
-        # (dito with target_link_libraries() - or are we supposed to create an imported
-        # target for each dependency, for more precise configuration-specific library names??)
-        # Thus we should specifically specify include_directories() where we can
-        # discern the configuration type (in single-configuration generators using
-        # CMAKE_BUILD_TYPE) and - in the case of multi-config generators - pray
-        # that the authoritative configuration has an AdditionalIncludeDirectories setting
-        # that matches that of all other configs, since we're unable to specify
-        # it in a configuration-specific way :(
-        # Well, in that case we should simply resort to generating
-        # the _union_ of all include directories of all configurations...
+    # ARGH, we have an issue with CMake not being fully up to speed with
+    # multi-configuration generators (e.g. .vcproj):
+    # it should be able to declare _all_ configuration-dependent settings
+    # in a .vcproj file as configuration-dependent variables
+    # (just like set_property(... COMPILE_DEFINITIONS_DEBUG ...)),
+    # but with configuration-specific(!) include directories on .vcproj side,
+    # there's currently only a _generic_ include_directories() command :-(
+    # (dito with target_link_libraries() - or are we supposed to create an imported
+    # target for each dependency, for more precise configuration-specific library names??)
+    # Thus we should specifically specify include_directories() where we can
+    # discern the configuration type (in single-configuration generators using
+    # CMAKE_BUILD_TYPE) and - in the case of multi-config generators - pray
+    # that the authoritative configuration has an AdditionalIncludeDirectories setting
+    # that matches that of all other configs, since we're unable to specify
+    # it in a configuration-specific way :(
+    # Well, in that case we should simply resort to generating
+    # the _union_ of all include directories of all configurations...
   
-        if $config_multi_authoritative.empty?
+    if $config_multi_authoritative.empty?
   	  project_configuration_first_xml = @project_xml.elements['Configurations/Configuration'].next_element
   	  if not project_configuration_first_xml.nil?
-            $config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
+        $config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
   	  end
-        end
+    end
   
-        vs7_get_configuration_types(@project_xml, configuration_types)
+    vs7_get_configuration_types(@project_xml, configuration_types)
   
-        @project_xml.elements.each { |elem_xml|
-          elem_parser = nil # IMPORTANT: reset it!
-          case elem_xml.name
-          when 'Files'
-            # FIXME: we most likely shouldn't pass a rather global "target" object here! (pass a file info object)
-            elem_parser = V2C_VS7FilesParser.new(elem_xml, @target)
-          when 'Platforms'
-            skipped_element_warn(elem_xml.name)
-          else
-            unknown_element(elem_xml.name)
-          end
-          if not elem_parser.nil?
-            elem_parser.parse
-          end
-        }
-  
-        # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
-        # (or, in other words, different configs are capable of generating _different_ target _types_
-        # for the _same_ target), but in CMake this isn't possible since _one_ target name
-        # maps to _one_ target type and we _need_ to restrict ourselves to using the project name
-        # as the exact target name (we are unable to define separate PROJ_lib and PROJ_exe target names,
-        # since other .vcproj file contents always link to our target via the main project name only!!).
-        # Thus we need to declare the target variable _outside_ the scope of per-config handling :(
-  
-        @project_xml.elements.each('Configurations/Configuration') { |config_xml|
-  	  config_info_curr = V2C_Config_Info.new
-  
-          config_info_curr.name = vs7_get_config_name(config_xml)
-  
-          config_info_curr.type = config_xml.attributes['ConfigurationType'].to_i
-  
-          # 0 == no MFC
-          # 1 == static MFC
-          # 2 == shared MFC
-  	  # FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
-  	  # --> we probably should _not_ switch to case insensitive matching on
-  	  # attributes (see e.g.
-  	  # http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
-  	  # but rather implement version-specific parser classes due to
-  	  # the differing XML configurations
-  	  # (e.g. do this via a common base class, then add derived ones
-  	  # to implement any differences).
-          config_info_curr.use_of_mfc = config_xml.attributes['UseOfMFC'].to_i
-          config_info_curr.use_of_atl = config_xml.attributes['UseOfATL'].to_i
-  
-          config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
-  	    compiler_info = V2C_Compiler_Info.new
-  	    arr_includes = Array.new
-  	    global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes)
-  	    arr_includes.each { |inc_dir|
-  	      info_inc_dir = V2C_Info_Include_Dir.new
-  	      info_inc_dir.dir = inc_dir
-  	      compiler_info.arr_info_include_dirs.push(info_inc_dir)
-  	    }
-  
-  	    global_parser.read_compiler_preprocessor_definitions(compiler_xml, compiler_info.hash_defines)
-            if config_info_curr.use_of_mfc == 2
-              compiler_info.hash_defines['_AFXEXT'] = ''
-  	      compiler_info.hash_defines['_AFXDLL'] = ''
-            end
-  
-            attr_opts = compiler_xml.attributes['AdditionalOptions']
-      	    # Oh well, we might eventually want to provide a full-scale
-      	    # translation of various compiler switches to their
-      	    # counterparts on compilers of various platforms, but for
-      	    # now, let's simply directly pass them on to the compiler when on
-      	    # Win32 platform.
-      	    if not attr_opts.nil?
-      	      # I don't think we need this (we have per-target properties), thus we'll NOT write it!
-      	      #local_generator.write_directory_property_compile_flags(attr_opts)
-     
-    	      # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
-      	      # simply make reverse use of existing translation table in CMake source.
-      	      compiler_info.arr_flags = attr_opts.split(';')
-            end
-  
-  	    config_info_curr.arr_compiler_info.push(compiler_info)
-          }
-  
-          #if not arr_sub_source_list_var_names.empty?
-          if @target.have_build_units
-            # parse linker configuration...
-            config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
-  	      linker_info_curr = V2C_Linker_Info.new
-  	      arr_dependencies_curr = linker_info_curr.arr_dependencies
-  	      global_parser.read_linker_additional_dependencies(linker_xml, arr_dependencies_curr)
-  	      arr_lib_dirs_curr = linker_info_curr.arr_lib_dirs
-  	      global_parser.read_linker_additional_library_directories(linker_xml, arr_lib_dirs_curr)
-  	      # TODO: support AdditionalOptions! (mention via
-  	      # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
-  	      # depending on target type, and make sure to filter out options pre-defined by CMake platform
-  	      # setup modules)
-  	      config_info_curr.arr_linker_info.push(linker_info_curr)
-            }
-          end
-  
-          @arr_config_info.push(config_info_curr)
-        }
-        #### DIRT END #####
+    @project_xml.elements.each { |elem_xml|
+      elem_parser = nil # IMPORTANT: reset it!
+      case elem_xml.name
+      when 'Configurations'
+        elem_parser = V2C_VS7ConfigurationsParser.new(elem_xml, @arr_config_info)
+      when 'Files'
+        # FIXME: we most likely shouldn't pass a rather global "target" object here! (pass a file info object)
+        elem_parser = V2C_VS7FilesParser.new(elem_xml, @target)
+      when 'Platforms'
+        skipped_element_warn(elem_xml.name)
+      else
+        unknown_element(elem_xml.name)
+      end
+      if not elem_parser.nil?
+        elem_parser.parse
+      end
+    }
   end
-  def parse_project_attributes
+  def parse_attributes
     @project_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
       case attr_xml.name
@@ -2179,6 +2250,13 @@ Finished. You should make sure to have all important v2c settings includes such 
   	# FIXME: hohumm, the position of this hook include is outdated, need to update it
   	target_generator.put_hook_post_definitions()
   
+        # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
+        # (or, in other words, different configs are capable of generating _different_ target _types_
+        # for the _same_ target), but in CMake this isn't possible since _one_ target name
+        # maps to _one_ target type and we _need_ to restrict ourselves to using the project name
+        # as the exact target name (we are unable to define separate PROJ_lib and PROJ_exe target names,
+        # since other .vcproj file contents always link to our target via the main project name only!!).
+        # Thus we need to declare the target _outside_ the scope of per-config handling :(
   	target_is_valid = target_generator.put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
   
   	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
