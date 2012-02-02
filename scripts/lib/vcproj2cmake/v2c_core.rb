@@ -1275,55 +1275,6 @@ def vs7_get_configuration_types(project_xml, configuration_types)
   }
 end
 
-def vs7_parse_file_list(project_name, vcproj_filter_xml, files_str)
-  file_group_name = vcproj_filter_xml.attributes['Name']
-  if file_group_name.nil?
-    file_group_name = 'COMMON'
-  end
-  files_str[:name] = file_group_name
-  log_debug "parsing files group #{files_str[:name]}"
-
-  vcproj_filter_xml.elements.each('Filter') { |subfilter_xml|
-    # skip file filters that have a SourceControlFiles property
-    # that's set to false, i.e. files which aren't under version
-    # control (such as IDL generated files).
-    # This experimental check might be a little rough after all...
-    # yes, FIXME: on Win32, these files likely _should_ get listed
-    # after all. We should probably do a platform check in such
-    # cases, i.e. add support for a file_mappings.txt
-    attr_scfiles = subfilter_xml.attributes['SourceControlFiles']
-    if not attr_scfiles.nil? and attr_scfiles.downcase == 'false'
-      log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
-      next
-    end
-    attr_scname = subfilter_xml.attributes['Name']
-    if not attr_scname.nil? and attr_scname == 'Generated Files'
-      # Hmm, how are we supposed to handle Generated Files?
-      # Most likely we _are_ supposed to add such files
-      # and set_property(SOURCE ... GENERATED) on it.
-      log_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
-      next
-    end
-    # TODO: fetch filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
-    # attr_filter_regex = subfilter_xml.attributes['Filter']
-    if files_str[:arr_sub_filters].nil?
-      files_str[:arr_sub_filters] = Array.new
-    end
-    subfiles_str = Files_str.new
-    files_str[:arr_sub_filters].push(subfiles_str)
-    vs7_parse_file_list(project_name, subfilter_xml, subfiles_str)
-  }
-
-  arr_sources = Array.new
-  vcproj_filter_xml.elements.each('File') { |file_xml|
-    vs7_parse_file(project_name, file_xml, arr_sources)
-  } # |file|
-
-  if not arr_sources.empty?
-    files_str[:arr_files] = arr_sources
-  end
-end
-
 # See also
 # "How to: Use Environment Variables in a Build"
 #   http://msdn.microsoft.com/en-us/library/ms171459.aspx
@@ -1419,6 +1370,9 @@ class V2C_VSParserBase
   def unknown_element(elem_name)
     log_error "unknown/incorrect XML element (#{elem_name})!"
   end
+  def skipped_element_warn(elem_name)
+    log_warn "unhandled less important XML element (#{elem_name})!"
+  end
 end
 
 class V2C_VSProjectXmlParserBase
@@ -1440,6 +1394,65 @@ end
 class V2C_VS7ProjectParserBase < V2C_VSProjectParserBase
   def initialize(project_xml, target_out, arr_config_info)
     super(project_xml, target_out, arr_config_info)
+  end
+end
+
+class V2C_VS7FilesParser < V2C_VSParserBase
+  def initialize(files_xml, target_out)
+    @files_xml = files_xml
+    @target = target_out
+  end
+  def parse
+    vs7_parse_file_list(@target.name, @files_xml, $main_files)
+    @target.have_build_units = $have_build_units
+  end
+  def vs7_parse_file_list(project_name, vcproj_filter_xml, files_str)
+    file_group_name = vcproj_filter_xml.attributes['Name']
+    if file_group_name.nil?
+      file_group_name = 'COMMON'
+    end
+    files_str[:name] = file_group_name
+    log_debug "parsing files group #{files_str[:name]}"
+  
+    vcproj_filter_xml.elements.each('Filter') { |subfilter_xml|
+      # skip file filters that have a SourceControlFiles property
+      # that's set to false, i.e. files which aren't under version
+      # control (such as IDL generated files).
+      # This experimental check might be a little rough after all...
+      # yes, FIXME: on Win32, these files likely _should_ get listed
+      # after all. We should probably do a platform check in such
+      # cases, i.e. add support for a file_mappings.txt
+      attr_scfiles = subfilter_xml.attributes['SourceControlFiles']
+      if not attr_scfiles.nil? and attr_scfiles.downcase == 'false'
+        log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
+        next
+      end
+      attr_scname = subfilter_xml.attributes['Name']
+      if not attr_scname.nil? and attr_scname == 'Generated Files'
+        # Hmm, how are we supposed to handle Generated Files?
+        # Most likely we _are_ supposed to add such files
+        # and set_property(SOURCE ... GENERATED) on it.
+        log_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
+        next
+      end
+      # TODO: fetch filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
+      # attr_filter_regex = subfilter_xml.attributes['Filter']
+      if files_str[:arr_sub_filters].nil?
+        files_str[:arr_sub_filters] = Array.new
+      end
+      subfiles_str = Files_str.new
+      files_str[:arr_sub_filters].push(subfiles_str)
+      vs7_parse_file_list(project_name, subfilter_xml, subfiles_str)
+    }
+  
+    arr_sources = Array.new
+    vcproj_filter_xml.elements.each('File') { |file_xml|
+      vs7_parse_file(project_name, file_xml, arr_sources)
+    } # |file|
+  
+    if not arr_sources.empty?
+      files_str[:arr_files] = arr_sources
+    end
   end
 end
 
@@ -1488,15 +1501,20 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
         vs7_get_configuration_types(@project_xml, configuration_types)
   
         @project_xml.elements.each { |elem_xml|
+          elem_parser = nil # IMPORTANT: reset it!
           case elem_xml.name
           when 'Files'
-            vs7_parse_file_list(@target.name, elem_xml, $main_files)
+            # FIXME: we most likely shouldn't pass a rather global "target" object here! (pass a file info object)
+            elem_parser = V2C_VS7FilesParser.new(elem_xml, @target)
+          when 'Platforms'
+            skipped_element_warn(elem_xml.name)
           else
             unknown_element(elem_xml.name)
           end
+          if not elem_parser.nil?
+            elem_parser.parse
+          end
         }
-  
-        @target.have_build_units = $have_build_units
   
         # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
         # (or, in other words, different configs are capable of generating _different_ target _types_
@@ -1834,17 +1852,17 @@ class V2C_VS10ProjectParser < V2C_VS10ProjectParserBase
     # and yell loudly for any element which we don't know about!
     # FIXME: VS7 parser should be changed to do the same thing...
     @project_xml.elements.each { |elem_xml|
-      proj_elem_parser = nil
+      elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'ItemGroup'
-        proj_elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
+        elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
       when 'PropertyGroup'
-        proj_elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target)
+        elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target)
       else
         unknown_element(elem_xml.name)
       end
-      if not proj_elem_parser.nil?
-        proj_elem_parser.parse
+      if not elem_parser.nil?
+        elem_parser.parse
       end
     }
   end
@@ -1857,11 +1875,12 @@ class V2C_VS10ProjectXmlParser < V2C_VSProjectXmlParserBase
   end
   def parse
     @doc_proj.elements.each { |elem_xml|
+      elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'Project'
         target = V2C_Target.new
-        project_parser = V2C_VS10ProjectParser.new(elem_xml, target, @arr_config_info)
-        project_parser.parse
+        elem_parser = V2C_VS10ProjectParser.new(elem_xml, target, @arr_config_info)
+        elem_parser.parse
         @arr_targets.push(target)
       else
         unknown_element(elem_xml.name)
@@ -1901,17 +1920,17 @@ class V2C_VS10ProjectFiltersParser < V2C_VS10ProjectFiltersParserBase
     # and yell loudly for any element which we don't know about!
     # FIXME: VS7 parser should be changed to do the same thing...
     @project_filters_xml.elements.each { |elem_xml|
-      proj_elem_parser = nil
+      elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'ItemGroup'
-        proj_filters_elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
+        elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
       #when 'PropertyGroup'
       #  proj_filters_elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target)
       else
         unknown_element(elem_xml.name)
       end
-      if not proj_filters_elem_parser.nil?
-        proj_filters_elem_parser.parse
+      if not elem_parser.nil?
+        elem_parser.parse
       end
     }
   end
@@ -1928,13 +1947,14 @@ class V2C_VS10ProjectFiltersXmlParser
     idx_target = 0
     puts "FIXME: filters file exists, needs parsing!"
     @doc_proj_filters.elements.each { |elem_xml|
+      elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'Project'
 	# FIXME handle fetch() exception
         target = @arr_targets.fetch(idx_target)
         idx_target += 1
-        project_filters_parser = V2C_VS10ProjectFiltersParser.new(elem_xml, target, @arr_config_info)
-        project_filters_parser.parse
+        elem_parser = V2C_VS10ProjectFiltersParser.new(elem_xml, target, @arr_config_info)
+        elem_parser.parse
       else
         unknown_element(elem_xml.name)
       end
@@ -1957,13 +1977,6 @@ class V2C_VS10ProjectFiltersFileParser
 
       project_filters_parser = V2C_VS10ProjectFiltersXmlParser.new(doc_proj_filters, @arr_targets, @arr_config_info)
       project_filters_parser.parse
-    }
-  end
-
-  private
-  def parse_filters(doc_filters_xml, target)
-    doc_filters_xml.elements.each('Project') { |project_xml|
-      parse_proj(project_xml)
     }
   end
 end
@@ -1990,155 +2003,6 @@ def cmake_get_config_info_condition_var_name(config_info)
   # Name may contain spaces - need to handle them!
   config_name = util_flatten_string(config_info.name)
   return "v2c_want_buildcfg_#{config_name}"
-end
-
-def project_generate_cmake(p_master_project, orig_proj_file_basename, out, target, main_files, arr_config_info)
-      if target.nil?
-        log_fatal 'invalid target'
-      end
-      if main_files.nil?
-        log_fatal 'project has no files!? --> will not generate it'
-      end
-
-      target_is_valid = false
-
-      master_project_dir = p_master_project.to_s
-      generator_base = V2C_BaseGlobalGenerator.new(master_project_dir)
-      map_lib_dirs = Hash.new
-      read_mappings_combined($filename_map_lib_dirs, map_lib_dirs, master_project_dir)
-      map_dependencies = Hash.new
-      read_mappings_combined($filename_map_dep, map_dependencies, master_project_dir)
-      map_defines = Hash.new
-      read_mappings_combined($filename_map_def, map_defines, master_project_dir)
-
-      syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
-
-      # we likely shouldn't declare this, since for single-configuration
-      # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
-      ## configuration types need to be stated _before_ declaring the project()!
-      #syntax_generator.write_empty_line()
-      #global_generator.put_configuration_types(configuration_types)
-
-      local_generator = V2C_CMakeLocalGenerator.new(out)
-
-      local_generator.put_file_header()
-
-      # TODO: figure out language type (C CXX etc.) and add it to project() command
-      # ok, let's try some initial Q&D handling...
-      arr_languages = nil
-      if not target.creator.nil?
-        if target.creator.match(/Fortran/)
-          arr_languages = Array.new
-          arr_languages.push('Fortran')
-        end
-      end
-      local_generator.put_project(target.name, arr_languages)
-
-      #global_generator = V2C_CMakeGlobalGenerator.new(out)
-
-      ## sub projects will inherit, and we _don't_ want that...
-      # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
-      #syntax_generator.write_line('# reset project-local variables')
-      #syntax_generator.write_set_var('V2C_LIBS', '')
-      #syntax_generator.write_set_var('V2C_SOURCES', '')
-
-      local_generator.put_include_MasterProjectDefaults_vcproj2cmake()
-
-      local_generator.put_hook_project()
-
-      target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
-
-      # arr_sub_source_list_var_names will receive the names of the individual source list variables:
-      arr_sub_source_list_var_names = Array.new
-      target_generator.put_file_list(target.name, main_files, nil, arr_sub_source_list_var_names)
-
-      if not arr_sub_source_list_var_names.empty?
-        # add a ${V2C_SOURCES} variable to the list, to be able to append
-        # all sorts of (auto-generated, ...) files to this list within
-        # hook includes.
-	# - _right before_ creating the target with its sources
-	# - and not earlier since earlier .vcproj-defined variables should be clean (not be made to contain V2C_SOURCES contents yet)
-        arr_sub_source_list_var_names.push('V2C_SOURCES')
-      else
-        log_warn "#{target.name}: no source files at all!? (header-based project?)"
-      end
-
-      local_generator.put_include_project_source_dir()
-
-      target_generator.put_hook_post_sources()
-
-      arr_config_info.each { |config_info_curr|
-	build_type_condition = ''
-	if $config_multi_authoritative == config_info_curr.name
-	  build_type_condition = "CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
-	else
-	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
-	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
-	end
-	syntax_generator.write_set_var_bool_conditional(cmake_get_config_info_condition_var_name(config_info_curr), build_type_condition)
-      }
-
-      arr_config_info.each { |config_info_curr|
-	var_v2c_want_buildcfg_curr = cmake_get_config_info_condition_var_name(config_info_curr)
-	syntax_generator.write_empty_line()
-	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
-
-	local_generator.put_cmake_mfc_atl_flag(config_info_curr)
-
-	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-	  arr_includes = Array.new
-	  compiler_info_curr.arr_info_include_dirs.each { |inc_dir_info|
-	    arr_includes.push(inc_dir_info.dir)
-	  }
-
-	  local_generator.write_include_directories(arr_includes, generator_base.map_includes)
-	}
-
-	# FIXME: hohumm, the position of this hook include is outdated, need to update it
-	target_generator.put_hook_post_definitions()
-
-	target_is_valid = target_generator.put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
-
-	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
-      } # [END per-config handling]
-
-      # Now that we likely _do_ have a valid target
-      # (created by at least one of the Debug/Release/... build configs),
-      # *iterate through the configs again* and add config-specific
-      # definitions. This is necessary (fix for multi-config
-      # environment).
-      if target_is_valid
-        str_conditional = "TARGET #{target.name}"
-        syntax_generator.write_conditional_if(str_conditional)
-        arr_config_info.each { |config_info_curr|
-        # NOTE: the commands below can stay in the general section (outside of
-        # var_v2c_want_buildcfg_curr above), but only since they define properties
-        # which are clearly named as being configuration-_specific_ already!
-        #
-	# I don't know WhyTH we're iterating over a compiler_info here,
-	# but let's just do it like that for now since it's required
-	# by our current data model:
-	  config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-            target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
-            # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-            target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, 'MSVC')
-          }
-        }
-        syntax_generator.write_conditional_end(str_conditional)
-      end
-
-      if target_is_valid
-	target_generator.set_properties_vs_scc(target.scc_info)
-
-        # TODO: might want to set a target's FOLDER property, too...
-        # (and perhaps a .vcproj has a corresponding attribute
-        # which indicates that?)
-
-        # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
-      end # target_is_valid
-
-      local_generator.put_var_converter_script_location($script_location_relative_to_master)
-      local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
 end
 
 class V2C_CMakeGenerator
@@ -2210,6 +2074,154 @@ Finished. You should make sure to have all important v2c settings includes such 
       end
     }
   end
+  def project_generate_cmake(p_master_project, orig_proj_file_basename, out, target, main_files, arr_config_info)
+        if target.nil?
+          log_fatal 'invalid target'
+        end
+        if main_files.nil?
+          log_fatal 'project has no files!? --> will not generate it'
+        end
+  
+        target_is_valid = false
+  
+        master_project_dir = p_master_project.to_s
+        generator_base = V2C_BaseGlobalGenerator.new(master_project_dir)
+        map_lib_dirs = Hash.new
+        read_mappings_combined($filename_map_lib_dirs, map_lib_dirs, master_project_dir)
+        map_dependencies = Hash.new
+        read_mappings_combined($filename_map_dep, map_dependencies, master_project_dir)
+        map_defines = Hash.new
+        read_mappings_combined($filename_map_def, map_defines, master_project_dir)
+  
+        syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
+  
+        # we likely shouldn't declare this, since for single-configuration
+        # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
+        ## configuration types need to be stated _before_ declaring the project()!
+        #syntax_generator.write_empty_line()
+        #global_generator.put_configuration_types(configuration_types)
+  
+        local_generator = V2C_CMakeLocalGenerator.new(out)
+  
+        local_generator.put_file_header()
+  
+        # TODO: figure out language type (C CXX etc.) and add it to project() command
+        # ok, let's try some initial Q&D handling...
+        arr_languages = nil
+        if not target.creator.nil?
+          if target.creator.match(/Fortran/)
+            arr_languages = Array.new
+            arr_languages.push('Fortran')
+          end
+        end
+        local_generator.put_project(target.name, arr_languages)
+  
+        #global_generator = V2C_CMakeGlobalGenerator.new(out)
+  
+        ## sub projects will inherit, and we _don't_ want that...
+        # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
+        #syntax_generator.write_line('# reset project-local variables')
+        #syntax_generator.write_set_var('V2C_LIBS', '')
+        #syntax_generator.write_set_var('V2C_SOURCES', '')
+  
+        local_generator.put_include_MasterProjectDefaults_vcproj2cmake()
+  
+        local_generator.put_hook_project()
+  
+        target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
+  
+        # arr_sub_source_list_var_names will receive the names of the individual source list variables:
+        arr_sub_source_list_var_names = Array.new
+        target_generator.put_file_list(target.name, main_files, nil, arr_sub_source_list_var_names)
+  
+        if not arr_sub_source_list_var_names.empty?
+          # add a ${V2C_SOURCES} variable to the list, to be able to append
+          # all sorts of (auto-generated, ...) files to this list within
+          # hook includes.
+  	# - _right before_ creating the target with its sources
+  	# - and not earlier since earlier .vcproj-defined variables should be clean (not be made to contain V2C_SOURCES contents yet)
+          arr_sub_source_list_var_names.push('V2C_SOURCES')
+        else
+          log_warn "#{target.name}: no source files at all!? (header-based project?)"
+        end
+  
+        local_generator.put_include_project_source_dir()
+  
+        target_generator.put_hook_post_sources()
+  
+        arr_config_info.each { |config_info_curr|
+  	build_type_condition = ''
+  	if $config_multi_authoritative == config_info_curr.name
+  	  build_type_condition = "CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
+  	else
+  	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
+  	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
+  	end
+  	syntax_generator.write_set_var_bool_conditional(cmake_get_config_info_condition_var_name(config_info_curr), build_type_condition)
+        }
+  
+        arr_config_info.each { |config_info_curr|
+  	var_v2c_want_buildcfg_curr = cmake_get_config_info_condition_var_name(config_info_curr)
+  	syntax_generator.write_empty_line()
+  	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
+  
+  	local_generator.put_cmake_mfc_atl_flag(config_info_curr)
+  
+  	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+  	  arr_includes = Array.new
+  	  compiler_info_curr.arr_info_include_dirs.each { |inc_dir_info|
+  	    arr_includes.push(inc_dir_info.dir)
+  	  }
+  
+  	  local_generator.write_include_directories(arr_includes, generator_base.map_includes)
+  	}
+  
+  	# FIXME: hohumm, the position of this hook include is outdated, need to update it
+  	target_generator.put_hook_post_definitions()
+  
+  	target_is_valid = target_generator.put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
+  
+  	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
+        } # [END per-config handling]
+  
+        # Now that we likely _do_ have a valid target
+        # (created by at least one of the Debug/Release/... build configs),
+        # *iterate through the configs again* and add config-specific
+        # definitions. This is necessary (fix for multi-config
+        # environment).
+        if target_is_valid
+          str_conditional = "TARGET #{target.name}"
+          syntax_generator.write_conditional_if(str_conditional)
+          arr_config_info.each { |config_info_curr|
+          # NOTE: the commands below can stay in the general section (outside of
+          # var_v2c_want_buildcfg_curr above), but only since they define properties
+          # which are clearly named as being configuration-_specific_ already!
+          #
+  	# I don't know WhyTH we're iterating over a compiler_info here,
+  	# but let's just do it like that for now since it's required
+  	# by our current data model:
+  	  config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+              target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
+              # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
+              target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, 'MSVC')
+            }
+          }
+          syntax_generator.write_conditional_end(str_conditional)
+        end
+  
+        if target_is_valid
+  	target_generator.set_properties_vs_scc(target.scc_info)
+  
+          # TODO: might want to set a target's FOLDER property, too...
+          # (and perhaps a .vcproj has a corresponding attribute
+          # which indicates that?)
+  
+          # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
+        end # target_is_valid
+  
+        local_generator.put_var_converter_script_location($script_location_relative_to_master)
+        local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
+  end
 end
 
 
@@ -2235,7 +2247,7 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
 
   parser_project_filename = p_parser_proj_file.to_s
   # Q&D parser switch...
-  parser = nil
+  parser = nil # IMPORTANT: reset it!
   if parser_project_filename.match(/.vcproj$/)
     parser = V2C_VS7ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
   elsif parser_project_filename.match(/.vfproj$/)
@@ -2245,7 +2257,11 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
     parser = V2C_VS10ProjectFilesParser.new(parser_project_filename, arr_targets, arr_config_info)
   end
 
-  parser.parse
+  if not parser.nil?
+    parser.parse
+  else
+    log_fatal "No project parser found for project file #{parser_project_filename}!?"
+  end
 
   orig_proj_file_basename = p_parser_proj_file.basename
 
