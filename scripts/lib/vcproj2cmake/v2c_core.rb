@@ -273,15 +273,15 @@ end
 
 class V2C_Config_Info
   def initialize
-    @name = 0 # WARNING: it may contain spaces!
-    @platform = 0 # FIXME: not yet supported by VS7 parser!
+    @build_type = 0 # WARNING: it may contain spaces!
+    @platform = 0
     @type = 0
     @use_of_mfc = 0 # TODO: perhaps make ATL/MFC values an enum?
     @use_of_atl = 0
     @arr_compiler_info = Array.new
     @arr_linker_info = Array.new
   end
-  attr_accessor :name
+  attr_accessor :build_type
   attr_accessor :platform
   attr_accessor :type
   attr_accessor :use_of_mfc
@@ -314,6 +314,7 @@ end
 
 # Well, in fact in Visual Studio, "target" and "project"
 # seem to be pretty much synonymous...
+# FIXME: we should still do better separation between these two...
 class V2C_Target
   def initialize
     @type = nil # project type
@@ -1273,17 +1274,11 @@ class V2C_VS7Parser
   end
 end
 
+#Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
 Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
 
-def vs7_get_config_name(config_xml)
+def vs7_get_build_type(config_xml)
   config_xml.attributes['Name'].split('|')[0]
-end
-
-def vs7_get_configuration_types(project_xml, configuration_types)
-  project_xml.elements.each('Configurations/Configuration') { |config_xml|
-    config_name = vs7_get_config_name(config_xml)
-    configuration_types.push(config_name)
-  }
 end
 
 # See also
@@ -1432,12 +1427,8 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
   def parse
     config_info_curr = V2C_Config_Info.new
 
-    config_info_curr.name = vs7_get_config_name(@config_xml)
-
     parse_attributes(config_info_curr)
-
     parse_elements(config_info_curr)
-
     @arr_config_info.push(config_info_curr)
   end
   def parse_attributes(config_info)
@@ -1446,6 +1437,10 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
       case attr_xml.name
       when 'ConfigurationType'
         config_info.type = attr_value.to_i
+      when 'Name'
+        arr_name = attr_value.split('|')
+        config_info.build_type = arr_name[0]
+        config_info.platform = arr_name[1]
       when 'UseOfMFC'
         # 0 == no MFC
         # 1 == static MFC
@@ -1631,10 +1626,14 @@ end
 
 class V2C_VS7FilterParser < V2C_VSParserBase
   def initialize(filter_xml, files_str_out)
-    @files_xml = files_xml
+    @filter_xml = filter_xml
     @files_str = files_str_out
   end
+  def parse
+  end
 end
+
+
 
 class V2C_VS7FilesParser < V2C_VSParserBase
   def initialize(files_xml, target_out, files_str_out)
@@ -1649,43 +1648,55 @@ class V2C_VS7FilesParser < V2C_VSParserBase
   def parse_file_list_recursive(project_name, vcproj_filter_xml, files_str)
     parse_file_list_attributes(vcproj_filter_xml, files_str)
   
-    vcproj_filter_xml.elements.each('Filter') { |subfilter_xml|
-      # skip file filters that have a SourceControlFiles property
-      # that's set to false, i.e. files which aren't under version
-      # control (such as IDL generated files).
-      # This experimental check might be a little rough after all...
-      # yes, FIXME: on Win32, these files likely _should_ get listed
-      # after all. We should probably do a platform check in such
-      # cases, i.e. add support for a file_mappings.txt
-      attr_scfiles = subfilter_xml.attributes['SourceControlFiles']
-      if get_boolean_value(attr_scfiles) == false
-        log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
-        next
-      end
-      attr_scname = subfilter_xml.attributes['Name']
-      if not attr_scname.nil? and attr_scname == 'Generated Files'
-        # Hmm, how are we supposed to handle Generated Files?
-        # Most likely we _are_ supposed to add such files
-        # and set_property(SOURCE ... GENERATED) on it.
-        log_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
-        next
-      end
-      # TODO: fetch filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
-      # attr_filter_regex = subfilter_xml.attributes['Filter']
-      if files_str[:arr_sub_filters].nil?
-        files_str[:arr_sub_filters] = Array.new
-      end
-      subfiles_str = Files_str.new
-      files_str[:arr_sub_filters].push(subfiles_str)
-      parse_file_list_recursive(project_name, subfilter_xml, subfiles_str)
-    }
-  
     arr_source_infos = Array.new
     vcproj_filter_xml.elements.each { |elem_xml|
       elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'File'
         elem_parser = V2C_VS7FileParser.new(project_name, elem_xml, arr_source_infos)
+      when 'Filter'
+        elem_parser = V2C_VS7FilterParser.new(elem_xml, arr_source_infos)
+        filter_xml = elem_xml # HACK
+        attr_scname = nil
+        val_scfiles = true
+        filter_xml.attributes.each_attribute { |attr_xml|
+          attr_value = attr_xml.value
+          case attr_xml.name
+	  when 'Filter'
+            # TODO: create filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
+            attr_scfilter = attr_value
+          when 'Name'
+            attr_scname = attr_value
+          when 'SourceControlFiles'
+            val_scfiles = get_boolean_value(attr_value)
+          else
+            unknown_element("Filter, attribute #{attr_xml.name}")
+          end
+        }
+        # skip file filters that have a SourceControlFiles property
+        # that's set to false, i.e. files which aren't under version
+        # control (such as IDL generated files).
+        # This experimental check might be a little rough after all...
+        # yes, FIXME: on Win32, these files likely _should_ get listed
+        # after all. We should probably do a platform check in such
+        # cases, i.e. add support for a file_mappings.txt
+        if val_scfiles == false
+          log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
+          next
+        end
+        if not attr_scname.nil? and attr_scname == 'Generated Files'
+          # Hmm, how are we supposed to handle Generated Files?
+          # Most likely we _are_ supposed to add such files
+          # and set_property(SOURCE ... GENERATED) on it.
+          log_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
+          next
+        end
+        if files_str[:arr_sub_filters].nil?
+          files_str[:arr_sub_filters] = Array.new
+        end
+        subfiles_str = Files_str.new
+        files_str[:arr_sub_filters].push(subfiles_str)
+        parse_file_list_recursive(project_name, filter_xml, subfiles_str)
       else
         unknown_element(elem_xml.name)
       end
@@ -1726,7 +1737,6 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
   def parse
     parse_attributes
 
-    configuration_types = Array.new
     $have_build_units = false # HACK
   
     $main_files = Files_str.new # HACK global var
@@ -1752,11 +1762,9 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     if $config_multi_authoritative.empty? # HACK global var
   	  project_configuration_first_xml = @project_xml.elements['Configurations/Configuration'].next_element
   	  if not project_configuration_first_xml.nil?
-        $config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
+        $config_multi_authoritative = vs7_get_build_type(project_configuration_first_xml)
   	  end
     end
-  
-    vs7_get_configuration_types(@project_xml, configuration_types)
   
     @project_xml.elements.each { |elem_xml|
       elem_parser = nil # IMPORTANT: reset it!
@@ -1906,15 +1914,14 @@ class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
         itemgroup_elem_xml.elements.each  { |projcfg_elem_xml|
           case projcfg_elem_xml.name
           when 'Configuration'
-            config_info.name = projcfg_elem_xml.text
-            log_debug "ProjectConfig: Configuration #{config_info.name}"
+            config_info.build_type = projcfg_elem_xml.text
           when 'Platform'
             config_info.platform = projcfg_elem_xml.text
-            log_debug "ProjectConfig: Platform #{config_info.platform}"
           else
             unknown_element("project config item group, name #{projcfg_elem_xml.name}!")
           end
 	}
+        log_debug "ProjectConfig: build type #{config_info.build_type}, platform #{config_info.platform}"
 	@arr_config_info.push(config_info)
       else
         unknown_element("project configs item group, name #{itemgroup_elem_xml.name}!")
@@ -2177,7 +2184,7 @@ end
 # Hrmm, I'm not quite sure yet where to aggregate this function...
 def cmake_get_config_info_condition_var_name(config_info)
   # Name may contain spaces - need to handle them!
-  config_name = util_flatten_string(config_info.name)
+  config_name = util_flatten_string(config_info.build_type)
   return "v2c_want_buildcfg_#{config_name}"
 end
 
@@ -2277,6 +2284,7 @@ Finished. You should make sure to have all important v2c settings includes such 
   
         # we likely shouldn't declare this, since for single-configuration
         # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
+        # Also, the configuration_types array should be inferred from arr_config_info.
         ## configuration types need to be stated _before_ declaring the project()!
         #syntax_generator.write_empty_line()
         #global_generator.put_configuration_types(configuration_types)
@@ -2331,11 +2339,11 @@ Finished. You should make sure to have all important v2c settings includes such 
   
         arr_config_info.each { |config_info_curr|
   	build_type_condition = ''
-  	if $config_multi_authoritative == config_info_curr.name
-  	  build_type_condition = "CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
+  	if $config_multi_authoritative == config_info_curr.build_type
+  	  build_type_condition = "CMAKE_CONFIGURATION_TYPES OR CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.build_type}\""
   	else
   	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
-  	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.name}\""
+  	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.build_type}\""
   	end
   	syntax_generator.write_set_var_bool_conditional(cmake_get_config_info_condition_var_name(config_info_curr), build_type_condition)
         }
@@ -2388,9 +2396,9 @@ Finished. You should make sure to have all important v2c settings includes such 
   	# but let's just do it like that for now since it's required
   	# by our current data model:
   	  config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-              target_generator.write_property_compile_definitions(config_info_curr.name, compiler_info_curr.hash_defines, map_defines)
+              target_generator.write_property_compile_definitions(config_info_curr.build_type, compiler_info_curr.hash_defines, map_defines)
               # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-              target_generator.write_property_compile_flags(config_info_curr.name, compiler_info_curr.arr_flags, 'MSVC')
+              target_generator.write_property_compile_flags(config_info_curr.build_type, compiler_info_curr.arr_flags, 'MSVC')
             }
           }
           syntax_generator.write_conditional_end(str_conditional)
