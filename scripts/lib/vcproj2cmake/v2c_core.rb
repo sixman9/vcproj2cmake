@@ -89,7 +89,7 @@ V2C_Core_Add_Plugin_Parser(plugin_parser_vs7_vfproj)
 # But at least let's optionally allow the user to precisely specify which configuration
 # (empty [first config], "Debug", "Release", ...) he wants to have
 # these settings taken from.
-$config_multi_authoritative = ""
+$config_multi_authoritative = ''
 
 $filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
 $filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
@@ -367,18 +367,17 @@ end
 $cmake_var_match_regex = '\\$\\{[[:alnum:]_]+\\}'
 $cmake_env_var_match_regex = '\\$ENV\\{[[:alnum:]_]+\\}'
 
-# Since we have several instances of the generator syntax base class,
+# HACK: Since we have several instances of the generator syntax base class,
 # we cannot have indent_now as class member since we'd have multiple
-# disconnected instances... (TODO: implement it as class-static member
-# variable?)
+# disconnected instances... (TODO: add common per-file syntax generator object as member of generator classes)
 $indent_now = v2c_generator_indent_num_spaces
 
 # Contains functionality common to _any_ file-based generator
 class V2C_TextStreamSyntaxGeneratorBase
-  def initialize(out, indent_step)
+  def initialize(out, indent_step, comments_level)
     @out = out
     @indent_step = indent_step
-    @comments_level = $v2c_generated_comments_level
+    @comments_level = comments_level
   end
 
   def generated_comments_level
@@ -417,7 +416,7 @@ end
 
 class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
   def initialize(out)
-    super(out, $v2c_generator_indent_step)
+    super(out, $v2c_generator_indent_step, $v2c_generated_comments_level)
     @streamout = self # reference to the stream output handler; to be changed into something that is being passed in externally, for the _one_ file that we (and other generators) are working on
 
     # internal CMake generator helpers
@@ -847,20 +846,75 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   end
 end
 
-class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
-  def initialize(target, localGenerator, out)
-    @target = target
-    @localGenerator = localGenerator
-    super(out)
+# Hrmm, I'm not quite sure yet where to aggregate this function...
+# (missing some proper generator base class or so...)
+def v2c_generator_validate_file(project_dir, file_relative, project_name)
+  if $v2c_validate_vcproj_ensure_files_ok
+    # TODO: perhaps we need to add a permissions check, too?
+    if not File.exist?("#{project_dir}/#{file_relative}")
+      log_error "File #{file_relative} as listed in project #{project_name} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
+      if $v2c_validate_vcproj_abort_on_error > 0
+	# FIXME: should be throwing an exception, to not exit out
+	# on entire possibly recursive (global) operation
+        # when a single project is in error...
+        log_fatal "Improper original file - will abort and NOT generate a broken converted project file. Please fix content of the original project file!"
+      end
+    end
   end
+end
 
-  def put_file_list(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
+class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
+  def initialize(out, project_name, project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
+    super(out)
+    @project_name = project_name
+    @project_dir = project_dir
+    @files_str = files_str
+    @parent_source_group = parent_source_group
+    @arr_sub_sources_for_parent = arr_sub_sources_for_parent
+  end
+  def generate
+    put_file_list_recursive(@files_str, @parent_source_group, @arr_sub_sources_for_parent)
+  end
+  def put_file_list_recursive(files_str, parent_source_group, arr_sub_sources_for_parent)
     group = files_str[:name]
     if not files_str[:arr_sub_filters].nil?
       arr_sub_filters = files_str[:arr_sub_filters]
     end
     if not files_str[:arr_files].nil?
-      arr_local_sources = files_str[:arr_files].clone
+      arr_local_sources = Array.new
+      files_str[:arr_files].each { |file|
+        f = file.path_relative
+
+	v2c_generator_validate_file(@project_dir, f, @project_name)
+
+        ## Ignore header files
+        #return if f =~ /\.(h|H|lex|y|ico|bmp|txt)$/
+        # No we should NOT ignore header files: if they aren't added to the target,
+        # then VS won't display them in the file tree.
+        next if f =~ /\.(lex|y|ico|bmp|txt)$/
+  
+        # Verbosely ignore IDL generated files
+        if f =~/_(i|p).c$/
+          # see file_mappings.txt comment above
+          log_info "#{project_name}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
+          included_in_build = false
+          next # no complex handling, just skip
+        end
+  
+        # Verbosely ignore .lib "sources"
+        if f =~ /\.lib$/
+          # probably these entries are supposed to serve as dependencies
+          # (i.e., non-link header-only include dependency, to ensure
+          # rebuilds in case of foreign-library header file changes).
+          # Not sure whether these were added by users or
+          # it's actually some standard MSVS mechanism... FIXME
+          log_info "#{@project_name}::#{f} registered as a \"source\" file!? Skipping!"
+          included_in_build = false
+          return # no complex handling, just return
+        end
+  
+        arr_local_sources.push(f)
+      }
     end
   
     # TODO: CMake is said to have a weird bug in case of parent_source_group being "Source Files":
@@ -882,7 +936,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       indent_more()
         arr_sub_filters.each { |subfilter|
           #log_info "writing: #{subfilter}"
-          put_file_list(project_name, subfilter, this_source_group, arr_my_sub_sources)
+          put_file_list_recursive(subfilter, this_source_group, arr_my_sub_sources)
         }
       indent_less()
     end
@@ -914,6 +968,20 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       # add our source list variable to parent return
       arr_sub_sources_for_parent.push(sources_variable)
     end
+  end
+end
+
+class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
+  def initialize(target, project_dir, localGenerator, out)
+    @target = target
+    @project_dir = project_dir
+    @localGenerator = localGenerator
+    super(out)
+  end
+
+  def put_file_list(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
+    filelist_generator = V2C_CMakeFileListGenerator.new(@out, @project_dir, project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
+    filelist_generator.generate
   end
   def put_source_vars(arr_sub_source_list_var_names)
     arr_source_vars = Array.new
@@ -1129,7 +1197,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     end
 
     write_empty_line()
-    @localGenerator.write_vcproj2cmake_func_comment()
+    write_vcproj2cmake_func_comment()
     arr_func_args = [ scc_info.project_name, scc_info.local_path, scc_info.provider, scc_info.aux_path ]
     write_command_list_quoted('v2c_target_set_properties_vs_scc', @target.name, arr_func_args)
   end
@@ -1202,78 +1270,6 @@ class V2C_VS7Parser
       #log_info "lib dir is '#{elem_lib_dir}'"
       arr_lib_dirs.push(elem_lib_dir)
     }
-  end
-end
-
-def vs7_parse_file(project_name, file_xml, arr_sources)
-  f = normalize_path(file_xml.attributes['RelativePath'])
-
-  ## Ignore header files
-  #return if f =~ /\.(h|H|lex|y|ico|bmp|txt)$/
-  # No we should NOT ignore header files: if they aren't added to the target,
-  # then VS won't display them in the file tree.
-  return if f =~ /\.(lex|y|ico|bmp|txt)$/
-
-
-  # Ignore files which have the ExcludedFromBuild attribute set to TRUE
-  excluded_from_build = false
-  # FIXME: for FileConfiguration, should make use of V2C_VS7ConfigurationParser as well!!
-  file_xml.elements.each('FileConfiguration') { |file_config_xml|
-    #file_config.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
-    #  if compiler_xml.attributes['UsePrecompiledHeader']
-    #}
-    excl_build = file_config_xml.attributes['ExcludedFromBuild']
-    if not excl_build.nil? and excl_build.downcase == 'true'
-      excluded_from_build = true
-      return # no complex handling, just return
-    end
-  }
-
-  # Ignore files with custom build steps
-  included_in_build = true
-  file_xml.elements.each('FileConfiguration/Tool') { |tool_xml|
-    if tool_xml.attributes['Name'] == 'VCCustomBuildTool'
-      included_in_build = false
-      return # no complex handling, just return
-    end
-  }
-
-  # Verbosely ignore IDL generated files
-  if f =~/_(i|p).c$/
-    # see file_mappings.txt comment above
-    log_info "#{project_name}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
-    included_in_build = false
-    return # no complex handling, just return
-  end
-
-  # Verbosely ignore .lib "sources"
-  if f =~ /\.lib$/
-    # probably these entries are supposed to serve as dependencies
-    # (i.e., non-link header-only include dependency, to ensure
-    # rebuilds in case of foreign-library header file changes).
-    # Not sure whether these were added by users or
-    # it's actually some standard MSVS mechanism... FIXME
-    log_info "#{project_name}::#{f} registered as a \"source\" file!? Skipping!"
-    included_in_build = false
-    return # no complex handling, just return
-  end
-
-  if not excluded_from_build and included_in_build
-    if $v2c_validate_vcproj_ensure_files_ok
-      # TODO: perhaps we need to add a permissions check, too?
-      if not File.exist?("#{$project_dir}/#{f}")
-        log_error "File #{f} as listed in project #{project_name} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
-        if $v2c_validate_vcproj_abort_on_error > 0
-          log_fatal "Improper original file - will abort and NOT generate a broken converted project file. Please fix .vcproj content!"
-        end
-      end
-    end
-    arr_sources.push(f)
-    if not $have_build_units
-      if f =~ /\.(c|C)/
-        $have_build_units = true
-      end
-    end
   end
 end
 
@@ -1387,6 +1383,13 @@ class V2C_VSParserBase
   end
   def skipped_element_warn(elem_name)
     log_warn "unhandled less important XML element (#{elem_name})!"
+  end
+  def get_boolean_value(attr_value)
+    value = false
+    if not attr_value.nil? and attr_value.downcase == 'true'
+      value = true
+    end
+    return value
   end
 end
 
@@ -1553,22 +1556,98 @@ class V2C_VS7ConfigurationsParser < V2C_VSParserBase
   end
 end
 
-class V2C_VS7FilesParser < V2C_VSParserBase
-  def initialize(files_xml, target_out)
-    @files_xml = files_xml
-    @target = target_out
+class V2C_Info_File
+  def initialize
+    @path_relative = ''
+  end
+  attr_accessor :path_relative
+end
+
+class V2C_VS7FileParser < V2C_VSParserBase
+  def initialize(project_name, file_xml, arr_source_infos_out)
+    @project_name = project_name # FIXME remove (file check should be done _after_ parsing!)
+    @file_xml = file_xml
+    @arr_source_infos = arr_source_infos_out
   end
   def parse
-    vs7_parse_file_list(@target.name, @files_xml, $main_files)
-    @target.have_build_units = $have_build_units
-  end
-  def vs7_parse_file_list(project_name, vcproj_filter_xml, files_str)
-    file_group_name = vcproj_filter_xml.attributes['Name']
-    if file_group_name.nil?
-      file_group_name = 'COMMON'
+    file = V2C_Info_File.new
+    parse_attributes(file)
+    f = file.path_relative # HACK
+  
+    excluded_from_build = false
+    # FIXME: for FileConfiguration, should make use of V2C_VS7ConfigurationParser (or a derived class) as well!!
+    @file_xml.elements.each { |elem_xml|
+      case elem_xml.name
+      when 'FileConfiguration'
+        elem_xml.attributes.each_attribute { |attr_xml|
+          attr_value = attr_xml.value
+          case attr_xml.name
+          when 'ExcludedFromBuild'
+            excluded_from_build = get_boolean_value(attr_value)
+          else
+            unknown_element("FileConfiguration, attribute #{attr_xml.name}")
+          end
+        }
+      else
+        unknown_element(elem_xml.name)
+      end
+    }
+  
+    # Ignore files which have the ExcludedFromBuild attribute set to TRUE
+    if excluded_from_build
+      return # no complex handling, just return
     end
-    files_str[:name] = file_group_name
-    log_debug "parsing files group #{files_str[:name]}"
+    # Ignore files with custom build steps
+    included_in_build = true
+    @file_xml.elements.each('FileConfiguration/Tool') { |tool_xml|
+      if tool_xml.attributes['Name'] == 'VCCustomBuildTool'
+        included_in_build = false
+        return # no complex handling, just return
+      end
+    }
+  
+    if not excluded_from_build and included_in_build
+      @arr_source_infos.push(file)
+      # HACK:
+      if not $have_build_units
+        if f =~ /\.(c|C)/
+          $have_build_units = true
+        end
+      end
+    end
+  end
+  def parse_attributes(file)
+    @file_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'RelativePath'
+        file.path_relative = normalize_path(attr_value)
+      else
+        unknown_element("Filter, attribute #{attr_xml.name}")
+      end
+    }
+  end
+end
+
+class V2C_VS7FilterParser < V2C_VSParserBase
+  def initialize(filter_xml, files_str_out)
+    @files_xml = files_xml
+    @files_str = files_str_out
+  end
+end
+
+class V2C_VS7FilesParser < V2C_VSParserBase
+  def initialize(files_xml, target_out, files_str_out)
+    @files_xml = files_xml
+    @target = target_out
+    @files_str = files_str_out
+  end
+  def parse
+    parse_file_list_recursive(@target.name, @files_xml, @files_str)
+    @target.have_build_units = $have_build_units # HACK
+  end
+  def parse_file_list_recursive(project_name, vcproj_filter_xml, files_str)
+    parse_file_list_attributes(vcproj_filter_xml, files_str)
   
     vcproj_filter_xml.elements.each('Filter') { |subfilter_xml|
       # skip file filters that have a SourceControlFiles property
@@ -1579,7 +1658,7 @@ class V2C_VS7FilesParser < V2C_VSParserBase
       # after all. We should probably do a platform check in such
       # cases, i.e. add support for a file_mappings.txt
       attr_scfiles = subfilter_xml.attributes['SourceControlFiles']
-      if not attr_scfiles.nil? and attr_scfiles.downcase == 'false'
+      if get_boolean_value(attr_scfiles) == false
         log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
         next
       end
@@ -1598,17 +1677,43 @@ class V2C_VS7FilesParser < V2C_VSParserBase
       end
       subfiles_str = Files_str.new
       files_str[:arr_sub_filters].push(subfiles_str)
-      vs7_parse_file_list(project_name, subfilter_xml, subfiles_str)
+      parse_file_list_recursive(project_name, subfilter_xml, subfiles_str)
     }
   
-    arr_sources = Array.new
-    vcproj_filter_xml.elements.each('File') { |file_xml|
-      vs7_parse_file(project_name, file_xml, arr_sources)
-    } # |file|
+    arr_source_infos = Array.new
+    vcproj_filter_xml.elements.each { |elem_xml|
+      elem_parser = nil # IMPORTANT: reset it!
+      case elem_xml.name
+      when 'File'
+        elem_parser = V2C_VS7FileParser.new(project_name, elem_xml, arr_source_infos)
+      else
+        unknown_element(elem_xml.name)
+      end
+      if not elem_parser.nil?
+        elem_parser.parse
+      end
+    } # |elem_xml|
   
-    if not arr_sources.empty?
-      files_str[:arr_files] = arr_sources
+    if not arr_source_infos.empty?
+      files_str[:arr_files] = arr_source_infos
     end
+  end
+  def parse_file_list_attributes(vcproj_filter_xml, files_str)
+    file_group_name = nil
+    vcproj_filter_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'Name'
+        file_group_name = attr_value
+      else
+        unknown_element("property group, attribute #{attr_xml.name}")
+      end
+    }
+    if file_group_name.nil?
+      file_group_name = 'COMMON'
+    end
+    files_str[:name] = file_group_name
+    log_debug "parsing files group #{files_str[:name]}"
   end
 end
 
@@ -1622,9 +1727,9 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     parse_attributes
 
     configuration_types = Array.new
-    $have_build_units = false
+    $have_build_units = false # HACK
   
-    $main_files = Files_str.new
+    $main_files = Files_str.new # HACK global var
 
     # ARGH, we have an issue with CMake not being fully up to speed with
     # multi-configuration generators (e.g. .vcproj):
@@ -1644,7 +1749,7 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     # Well, in that case we should simply resort to generating
     # the _union_ of all include directories of all configurations...
   
-    if $config_multi_authoritative.empty?
+    if $config_multi_authoritative.empty? # HACK global var
   	  project_configuration_first_xml = @project_xml.elements['Configurations/Configuration'].next_element
   	  if not project_configuration_first_xml.nil?
         $config_multi_authoritative = vs7_get_config_name(project_configuration_first_xml)
@@ -1660,7 +1765,7 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
         elem_parser = V2C_VS7ConfigurationsParser.new(elem_xml, @arr_config_info)
       when 'Files'
         # FIXME: we most likely shouldn't pass a rather global "target" object here! (pass a file info object)
-        elem_parser = V2C_VS7FilesParser.new(elem_xml, @target)
+        elem_parser = V2C_VS7FilesParser.new(elem_xml, @target, $main_files)
       when 'Platforms'
         skipped_element_warn(elem_xml.name)
       else
@@ -2077,12 +2182,16 @@ def cmake_get_config_info_condition_var_name(config_info)
 end
 
 class V2C_CMakeGenerator
-  def initialize(p_master_project, orig_proj_file_basename, cmakelists_output_file, arr_targets, arr_config_info)
+  def initialize(p_script, p_master_project, orig_proj_file_basename, p_generator_proj_file, arr_targets, arr_config_info)
     @p_master_project = p_master_project
     @orig_proj_file_basename = orig_proj_file_basename
-    @cmakelists_output_file = cmakelists_output_file
+    # figure out a project_dir variable from the generated project file location
+    @project_dir = p_generator_proj_file.dirname
+    @cmakelists_output_file = p_generator_proj_file.to_s
     @arr_targets = arr_targets
     @arr_config_info = arr_config_info
+    @script_location_relative_to_master = p_script.relative_path_from(p_master_project)
+    #puts "p_script #{p_script} | p_master_project #{p_master_project} | @script_location_relative_to_master #{@script_location_relative_to_master}"
   end
   def generate
     @arr_targets.each { |target|
@@ -2199,7 +2308,7 @@ Finished. You should make sure to have all important v2c settings includes such 
   
         local_generator.put_hook_project()
   
-        target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
+        target_generator = V2C_CMakeTargetGenerator.new(target, @project_dir, local_generator, out)
   
         # arr_sub_source_list_var_names will receive the names of the individual source list variables:
         arr_sub_source_list_var_names = Array.new
@@ -2297,28 +2406,18 @@ Finished. You should make sure to have all important v2c settings includes such 
           # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
         end # target_is_valid
   
-        local_generator.put_var_converter_script_location($script_location_relative_to_master)
+        local_generator.put_var_converter_script_location(@script_location_relative_to_master)
         local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
   end
 end
 
 
 def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_file, p_master_project)
-  # figure out a project_dir variable from the .vcproj location
-  project_dir = p_parser_proj_file.dirname
-
-  # HACK: make project_dir a global variable...
-  $project_dir = project_dir
-
-  #p_project_dir = Pathname.new($project_dir)
+  #p_project_dir = Pathname.new(project_dir)
   #p_cmakelists = Pathname.new(output_file)
   #cmakelists_dir = p_cmakelists.dirname
   #p_cmakelists_dir = Pathname.new(cmakelists_dir)
   #p_cmakelists_dir.relative_path_from(...)
-
-  # HACK: create global $script_location_relative_to_master variable...
-  $script_location_relative_to_master = p_script.relative_path_from(p_master_project)
-  #puts "p_script #{p_script} | p_master_project #{p_master_project} | $script_location_relative_to_master #{$script_location_relative_to_master}"
 
   arr_targets = Array.new
   arr_config_info = Array.new
@@ -2343,10 +2442,9 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
 
   orig_proj_file_basename = p_parser_proj_file.basename
 
-  generator_project_filename = p_generator_proj_file.to_s
   generator = nil
   if true
-    generator = V2C_CMakeGenerator.new(p_master_project, orig_proj_file_basename, generator_project_filename, arr_targets, arr_config_info)
+    generator = V2C_CMakeGenerator.new(p_script, p_master_project, orig_proj_file_basename, p_generator_proj_file, arr_targets, arr_config_info)
   end
 
   if not generator.nil?
