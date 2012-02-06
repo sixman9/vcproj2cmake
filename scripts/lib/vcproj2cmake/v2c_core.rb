@@ -488,14 +488,12 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
       write_set_var_bool(var_name, false)
     write_conditional_end(str_condition)
   end
-  def write_include(include_file_args)
+  def write_include(include_file, optional = false)
+    include_file_args = element_handle_quoting(include_file)
+    if optional
+      include_file_args += ' OPTIONAL'
+    end
     write_command_single_line('include', include_file_args)
-  end
-  def write_include_optional(include_file)
-    # FIXME: should apply quoting (as needed) to include_file _here_
-    # since this is the best place to do it...
-    include_file_optional = include_file + ' OPTIONAL'
-    write_include(include_file_optional)
   end
   def write_vcproj2cmake_func_comment()
     write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{@vcproj2cmake_func_cmake}")
@@ -633,7 +631,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       )
     end
     # (side note: see "ldd -u -r" on Linux for superfluous link parts potentially caused by this!)
-    write_include_optional('MasterProjectDefaults_vcproj2cmake')
+    write_include('MasterProjectDefaults_vcproj2cmake', true)
   end
   def put_hook_project
     write_comment_at_level(2, \
@@ -641,7 +639,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
 	"the _LIBRARIES / _INCLUDE_DIRS mappings created\n" \
 	"by your include/dependency map files." \
     )
-    write_include_optional('"${V2C_HOOK_PROJECT}"')
+    write_include('${V2C_HOOK_PROJECT}', true)
   end
 
   def put_include_project_source_dir
@@ -833,7 +831,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # to skip the entire build of this file on certain platforms:
     # if(PLATFORM) message(STATUS "not supported") return() ...
     # (note that we appended CMAKE_MODULE_PATH _prior_ to this include()!)
-    write_include_optional('"${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt"')
+    write_include('${V2C_CONFIG_DIR_LOCAL}/hook_pre.txt', true)
   end
 end
 
@@ -982,14 +980,14 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_empty_line()
     write_list_quoted('SOURCES', arr_source_vars)
   end
-  def put_hook_post_sources; write_include_optional('"${V2C_HOOK_POST_SOURCES}"') end
+  def put_hook_post_sources; write_include('${V2C_HOOK_POST_SOURCES}', true) end
   def put_hook_post_definitions
     write_empty_line()
     write_comment_at_level(1, \
 	"hook include after all definitions have been made\n" \
 	"(but _before_ target is created using the source list!)" \
     )
-    write_include_optional('"${V2C_HOOK_POST_DEFINITIONS}"')
+    write_include('${V2C_HOOK_POST_DEFINITIONS}', true)
   end
   # FIXME: not sure whether map_lib_dirs etc. should be passed in in such a raw way -
   # probably mapping should already have been done at that stage...
@@ -1089,7 +1087,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_comment_at_level(1, \
       "e.g. to be used for tweaking target properties etc." \
     )
-    write_include_optional('"${V2C_HOOK_POST_TARGET}"')
+    write_include('${V2C_HOOK_POST_TARGET}', true)
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
       write_conditional_if(str_platform)
