@@ -1094,9 +1094,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
       write_conditional_if(str_platform)
         arr_compile_defn = Array.new
-        # FIXME: we should probably get rid of sort() here (and elsewhere),
-        # but for now we'll keep it, to retain identically generated files.
-        arr_platdefs.sort.each do |compile_defn|
+        arr_platdefs.each do |compile_defn|
     	  # Need to escape the value part of the key=value definition:
           if compile_defn =~ /[\(\)]+/
             escape_char(compile_defn, '\\(')
@@ -1427,9 +1425,7 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
   end
   def parse_compiler_additional_include_directories(compiler_info, attr_incdir)
     arr_includes = Array.new
-    # FIXME: we should probably get rid of sort() here (and elsewhere),
-    # but for now we'll keep it, to retain identically generated files.
-    include_dirs = attr_incdir.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).sort.each { |elem_inc_dir|
+    include_dirs = attr_incdir.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_inc_dir|
       elem_inc_dir = normalize_path(elem_inc_dir).strip
       #log_info "include is '#{elem_inc_dir}'"
       arr_includes.push(elem_inc_dir)
