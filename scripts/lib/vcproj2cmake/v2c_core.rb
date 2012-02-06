@@ -91,9 +91,9 @@ V2C_Core_Add_Plugin_Parser(plugin_parser_vs7_vfproj)
 # these settings taken from.
 $config_multi_authoritative = ''
 
-$filename_map_def = "#{$v2c_config_dir_local}/define_mappings.txt"
-$filename_map_dep = "#{$v2c_config_dir_local}/dependency_mappings.txt"
-$filename_map_lib_dirs = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
+FILENAME_MAP_DEF = "#{$v2c_config_dir_local}/define_mappings.txt"
+FILENAME_MAP_DEP = "#{$v2c_config_dir_local}/dependency_mappings.txt"
+FILENAME_MAP_LIB_DIRS = "#{$v2c_config_dir_local}/lib_dirs_mappings.txt"
 
 
 def log_debug(str)
@@ -369,8 +369,8 @@ class V2C_BaseGlobalGenerator
 end
 
 
-$cmake_var_match_regex = '\\$\\{[[:alnum:]_]+\\}'
-$cmake_env_var_match_regex = '\\$ENV\\{[[:alnum:]_]+\\}'
+CMAKE_VAR_MATCH_REGEX = '\\$\\{[[:alnum:]_]+\\}'
+CMAKE_ENV_VAR_MATCH_REGEX = '\\$ENV\\{[[:alnum:]_]+\\}'
 
 # HACK: Since we have several instances of the generator syntax base class,
 # we cannot have indent_now as class member since we'd have multiple
@@ -530,7 +530,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
   def element_handle_quoting(elem)
     # Determine whether quoting needed
     # (in case of whitespace or variable content):
-    #if elem.match(/\s|#{$cmake_var_match_regex}|#{$cmake_env_var_match_regex}/)
+    #if elem.match(/\s|#{CMAKE_VAR_MATCH_REGEX}|#{CMAKE_ENV_VAR_MATCH_REGEX}/)
     # Hrmm, turns out that variables better should _not_ be quoted.
     # But what we _do_ need to quote is regular strings which include
     # whitespace characters, i.e. check for alphanumeric char following
@@ -1211,57 +1211,6 @@ require 'rexml/document'
 $vs7_prop_var_scan_regex = '\\$\\(([[:alnum:]_]+)\\)'
 $vs7_prop_var_match_regex = '\\$\\([[:alnum:]_]+\\)'
 
-class V2C_VS7Parser
-  def initialize
-    @vs7_value_separator_regex = '[;,]'
-  end
-
-  def read_compiler_additional_include_directories(compiler_xml, arr_includes)
-    attr_incdir = compiler_xml.attributes['AdditionalIncludeDirectories']
-    return if attr_incdir.nil?
-    # FIXME: we should probably get rid of sort() here (and elsewhere),
-    # but for now we'll keep it, to retain identically generated files.
-    include_dirs = attr_incdir.split(/#{@vs7_value_separator_regex}/).sort.each { |elem_inc_dir|
-      elem_inc_dir = normalize_path(elem_inc_dir).strip
-      #log_info "include is '#{elem_inc_dir}'"
-      arr_includes.push(elem_inc_dir)
-    }
-  end
-
-  def read_compiler_preprocessor_definitions(compiler_xml, hash_defines)
-    attr_defines = compiler_xml.attributes['PreprocessorDefinitions']
-    return if attr_defines.nil?
-    attr_defines.split(/#{@vs7_value_separator_regex}/).each { |elem_define|
-      str_define_key, str_define_value = elem_define.strip.split(/=/)
-      # Since a Hash will indicate nil for any non-existing key,
-      # we do need to fill in _empty_ value for our _existing_ key.
-      if str_define_value.nil?
-        str_define_value = ''
-      end
-      hash_defines[str_define_key] = str_define_value
-    }
-  end
-
-  def read_linker_additional_dependencies(linker_xml, arr_dependencies)
-    attr_deps = linker_xml.attributes['AdditionalDependencies']
-    return if attr_deps.nil? or attr_deps.length == 0
-    attr_deps.split.each { |elem_lib_dep|
-      elem_lib_dep = normalize_path(elem_lib_dep).strip
-      arr_dependencies.push(File.basename(elem_lib_dep, '.lib'))
-    }
-  end
-
-  def read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
-    attr_lib_dirs = linker_xml.attributes['AdditionalLibraryDirectories']
-    return if attr_lib_dirs.nil? or attr_lib_dirs.length == 0
-    attr_lib_dirs.split(/#{@vs7_value_separator_regex}/).each { |elem_lib_dir|
-      elem_lib_dir = normalize_path(elem_lib_dir).strip
-      #log_info "lib dir is '#{elem_lib_dir}'"
-      arr_lib_dirs.push(elem_lib_dir)
-    }
-  end
-end
-
 #Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
 Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
 
@@ -1398,12 +1347,144 @@ class V2C_VS7ProjectParserBase < V2C_VSProjectParserBase
   end
 end
 
+module V2C_VS7ToolDefines
+  VS7_VALUE_SEPARATOR_REGEX = '[;,]'
+end
+
+class V2C_VS7ToolLinkerParser < V2C_VSParserBase
+  include V2C_VS7ToolDefines
+  def initialize(linker_xml, arr_linker_info_out)
+    @linker_xml = linker_xml
+    @arr_linker_info = arr_linker_info_out
+  end
+  def parse
+    # parse linker configuration...
+    # FIXME case/when switch for individual elements...
+    linker_info_curr = V2C_Tool_Linker_Info.new
+    arr_dependencies_curr = linker_info_curr.arr_dependencies
+    read_linker_additional_dependencies(@linker_xml, arr_dependencies_curr)
+    arr_lib_dirs_curr = linker_info_curr.arr_lib_dirs
+    read_linker_additional_library_directories(@linker_xml, arr_lib_dirs_curr)
+    # TODO: support AdditionalOptions! (mention via
+    # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
+    # depending on target type, and make sure to filter out options pre-defined by CMake platform
+    # setup modules)
+    @arr_linker_info.push(linker_info_curr)
+  end
+
+  private
+
+  def read_linker_additional_dependencies(linker_xml, arr_dependencies)
+    attr_deps = linker_xml.attributes['AdditionalDependencies']
+    return if attr_deps.nil? or attr_deps.length == 0
+    attr_deps.split.each { |elem_lib_dep|
+      elem_lib_dep = normalize_path(elem_lib_dep).strip
+      arr_dependencies.push(File.basename(elem_lib_dep, '.lib'))
+    }
+  end
+
+  def read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
+    attr_lib_dirs = linker_xml.attributes['AdditionalLibraryDirectories']
+    return if attr_lib_dirs.nil? or attr_lib_dirs.length == 0
+    attr_lib_dirs.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_lib_dir|
+      elem_lib_dir = normalize_path(elem_lib_dir).strip
+      #log_info "lib dir is '#{elem_lib_dir}'"
+      arr_lib_dirs.push(elem_lib_dir)
+    }
+  end
+end
+
+class V2C_VS7ToolCompilerParser < V2C_VSParserBase
+  include V2C_VS7ToolDefines
+  def initialize(compiler_xml, arr_compiler_info_out)
+    @compiler_xml = compiler_xml
+    @arr_compiler_info = arr_compiler_info_out
+  end
+  def parse
+    compiler_info = V2C_Tool_Compiler_Info.new
+
+    parse_attributes(compiler_info)
+
+    @arr_compiler_info.push(compiler_info)
+  end
+
+  private
+
+  def parse_attributes(compiler_info)
+    @compiler_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'AdditionalIncludeDirectories'
+        parse_compiler_additional_include_directories(compiler_info, attr_value)
+      when 'AdditionalOptions'
+        parse_compiler_additional_options(compiler_info.arr_flags, attr_value)
+      when 'PreprocessorDefinitions'
+        parse_compiler_preprocessor_definitions(compiler_info.hash_defines, attr_value)
+      else
+        unknown_element("ToolCompiler, #{attr_xml.name}")
+      end
+    }
+  end
+  def parse_compiler_additional_include_directories(compiler_info, attr_incdir)
+    arr_includes = Array.new
+    # FIXME: we should probably get rid of sort() here (and elsewhere),
+    # but for now we'll keep it, to retain identically generated files.
+    include_dirs = attr_incdir.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).sort.each { |elem_inc_dir|
+      elem_inc_dir = normalize_path(elem_inc_dir).strip
+      #log_info "include is '#{elem_inc_dir}'"
+      arr_includes.push(elem_inc_dir)
+    }
+    arr_includes.each { |inc_dir|
+      info_inc_dir = V2C_Info_Include_Dir.new
+      info_inc_dir.dir = inc_dir
+      compiler_info.arr_info_include_dirs.push(info_inc_dir)
+    }
+  end
+  def parse_compiler_additional_options(arr_flags, attr_options)
+    # Oh well, we might eventually want to provide a full-scale
+    # translation of various compiler switches to their
+    # counterparts on compilers of various platforms, but for
+    # now, let's simply directly pass them on to the compiler when on
+    # Win32 platform.
+
+    # I don't think we need this (we have per-target properties), thus we'll NOT write it!
+    #local_generator.write_directory_property_compile_flags(attr_opts)
+  
+    # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
+    # simply make reverse use of existing translation table in CMake source.
+    arr_flags.replace(attr_options.split(';'))
+  end
+  def parse_compiler_preprocessor_definitions(hash_defines, attr_defines)
+    attr_defines.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_define|
+      str_define_key, str_define_value = elem_define.strip.split(/=/)
+      # Since a Hash will indicate nil for any non-existing key,
+      # we do need to fill in _empty_ value for our _existing_ key.
+      if str_define_value.nil?
+        str_define_value = ''
+      end
+      hash_defines[str_define_key] = str_define_value
+    }
+  end
+end
+
 class V2C_VS7ToolParser < V2C_VSParserBase
   def initialize(tool_xml, config_info_out)
     @tool_xml = tool_xml
     @config_info = config_info_out
   end
   def parse
+    toolname = @tool_xml.attributes['Name']
+    case toolname
+    when 'VCCLCompilerTool'
+      elem_parser = V2C_VS7ToolCompilerParser.new(@tool_xml, @config_info.arr_compiler_info)
+    when 'VCLinkerTool'
+      elem_parser = V2C_VS7ToolLinkerParser.new(@tool_xml, @config_info.arr_linker_info)
+    else
+      unknown_element("Tool Parser, #{toolname}")
+    end
+    if not elem_parser.nil?
+      elem_parser.parse
+    end
   end
 end
 
@@ -1466,58 +1547,6 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
       if not elem_parser.nil?
         elem_parser.parse
       end
-    }
-
-    @config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
-    	    global_parser = V2C_VS7Parser.new
-
-	    compiler_info = V2C_Tool_Compiler_Info.new
-	    arr_includes = Array.new
-	    global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes)
-	    arr_includes.each { |inc_dir|
-	      info_inc_dir = V2C_Info_Include_Dir.new
-	      info_inc_dir.dir = inc_dir
-	      compiler_info.arr_info_include_dirs.push(info_inc_dir)
-	    }
-
-	    global_parser.read_compiler_preprocessor_definitions(compiler_xml, compiler_info.hash_defines)
-      if config_info.use_of_mfc == 2
-        compiler_info.hash_defines['_AFXEXT'] = ''
-	      compiler_info.hash_defines['_AFXDLL'] = ''
-      end
-
-      attr_opts = compiler_xml.attributes['AdditionalOptions']
-	    # Oh well, we might eventually want to provide a full-scale
-	    # translation of various compiler switches to their
-	    # counterparts on compilers of various platforms, but for
-	    # now, let's simply directly pass them on to the compiler when on
-	    # Win32 platform.
-	    if not attr_opts.nil?
-	      # I don't think we need this (we have per-target properties), thus we'll NOT write it!
-	      #local_generator.write_directory_property_compile_flags(attr_opts)
-   
-  	      # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
-	      # simply make reverse use of existing translation table in CMake source.
-	      compiler_info.arr_flags = attr_opts.split(';')
-      end
-
-	    config_info.arr_compiler_info.push(compiler_info)
-    }
-
-    # parse linker configuration...
-    @config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
-      global_parser = V2C_VS7Parser.new
-
-      linker_info_curr = V2C_Tool_Linker_Info.new
-      arr_dependencies_curr = linker_info_curr.arr_dependencies
-      global_parser.read_linker_additional_dependencies(linker_xml, arr_dependencies_curr)
-      arr_lib_dirs_curr = linker_info_curr.arr_lib_dirs
-      global_parser.read_linker_additional_library_directories(linker_xml, arr_lib_dirs_curr)
-      # TODO: support AdditionalOptions! (mention via
-      # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
-      # depending on target type, and make sure to filter out options pre-defined by CMake platform
-      # setup modules)
-      config_info.arr_linker_info.push(linker_info_curr)
     }
   end
 
@@ -2273,11 +2302,11 @@ Finished. You should make sure to have all important v2c settings includes such 
         master_project_dir = p_master_project.to_s
         generator_base = V2C_BaseGlobalGenerator.new(master_project_dir)
         map_lib_dirs = Hash.new
-        read_mappings_combined($filename_map_lib_dirs, map_lib_dirs, master_project_dir)
+        read_mappings_combined(FILENAME_MAP_LIB_DIRS, map_lib_dirs, master_project_dir)
         map_dependencies = Hash.new
-        read_mappings_combined($filename_map_dep, map_dependencies, master_project_dir)
+        read_mappings_combined(FILENAME_MAP_DEP, map_dependencies, master_project_dir)
         map_defines = Hash.new
-        read_mappings_combined($filename_map_def, map_defines, master_project_dir)
+        read_mappings_combined(FILENAME_MAP_DEF, map_defines, master_project_dir)
   
         syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
   
@@ -2395,6 +2424,10 @@ Finished. You should make sure to have all important v2c settings includes such 
   	# but let's just do it like that for now since it's required
   	# by our current data model:
   	  config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+            if config_info_curr.use_of_mfc == 2
+              compiler_info_curr.hash_defines['_AFXEXT'] = ''
+              compiler_info_curr.hash_defines['_AFXDLL'] = ''
+            end
               target_generator.write_property_compile_definitions(config_info_curr.build_type, compiler_info_curr.hash_defines, map_defines)
               # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
               target_generator.write_property_compile_flags(config_info_curr.build_type, compiler_info_curr.arr_flags, 'MSVC')
