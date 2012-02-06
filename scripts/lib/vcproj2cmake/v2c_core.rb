@@ -278,6 +278,8 @@ class V2C_Config_Info
     @type = 0
     @use_of_mfc = 0 # TODO: perhaps make ATL/MFC values an enum?
     @use_of_atl = 0
+    @charset = 0 # Simply uses VS7 values for now. TODO: should use our own enum definition or so.
+    @whole_program_optimization = 0 # Simply uses VS7 values for now. TODO: should use our own enum definition or so.
     @arr_compiler_info = Array.new
     @arr_linker_info = Array.new
   end
@@ -286,6 +288,8 @@ class V2C_Config_Info
   attr_accessor :type
   attr_accessor :use_of_mfc
   attr_accessor :use_of_atl
+  attr_accessor :charset
+  attr_accessor :whole_program_optimization
   attr_accessor :arr_compiler_info
   attr_accessor :arr_linker_info
 end
@@ -381,20 +385,12 @@ class V2C_TextStreamSyntaxGeneratorBase
     @comments_level = comments_level
   end
 
-  def generated_comments_level
-    return @comments_level
-  end
+  def generated_comments_level; return @comments_level end
 
-  def get_indent
-    return $indent_now
-  end
+  def get_indent; return $indent_now end
 
-  def indent_more
-    $indent_now += @indent_step
-  end
-  def indent_less
-    $indent_now -= @indent_step
-  end
+  def indent_more; $indent_now += @indent_step end
+  def indent_less; $indent_now -= @indent_step end
 
   def write_block(block)
     block.split("\n").each { |line|
@@ -406,9 +402,7 @@ class V2C_TextStreamSyntaxGeneratorBase
     @out.puts part
   end
 
-  def write_empty_line
-    @out.puts
-  end
+  def write_empty_line; @out.puts end
   def write_new_line(part)
     write_empty_line()
     write_line(part)
@@ -479,9 +473,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
     indent_less()
     write_command_single_line('endif', str_conditional)
   end
-  def get_keyword_bool(setting)
-    return setting ? 'true' : 'false'
-  end
+  def get_keyword_bool(setting); return setting ? 'true' : 'false' end
   def write_set_var(var_name, setting)
     str_args = "#{var_name} #{setting}"
     write_command_single_line('set', str_args)
@@ -522,9 +514,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
   end
 
   # analogous to CMake separate_arguments() command
-  def separate_arguments(array_in)
-    array_in.join(';')
-  end
+  def separate_arguments(array_in); array_in.join(';') end
 
   private
 
@@ -992,9 +982,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     write_empty_line()
     write_list_quoted('SOURCES', arr_source_vars)
   end
-  def put_hook_post_sources
-    write_include_optional('"${V2C_HOOK_POST_SOURCES}"')
-  end
+  def put_hook_post_sources; write_include_optional('"${V2C_HOOK_POST_SOURCES}"') end
   def put_hook_post_definitions
     write_empty_line()
     write_comment_at_level(1, \
@@ -1435,6 +1423,8 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
     @config_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
       case attr_xml.name
+      when 'CharacterSet'
+        config_info.charset = parse_charset(attr_value)
       when 'ConfigurationType'
         config_info.type = attr_value.to_i
       when 'Name'
@@ -1457,6 +1447,8 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
         config_info.use_of_mfc = attr_value.to_i
       when 'UseOfATL'
         config_info.use_of_atl = attr_value.to_i
+      when 'WholeProgramOptimization'
+        config_info.whole_program_optimization = parse_wp_optimization(attr_value)
       else
         unknown_element(attr_xml.name)
       end
@@ -1528,6 +1520,11 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
       config_info.arr_linker_info.push(linker_info_curr)
     }
   end
+
+  private
+
+  def parse_charset(str_charset); return str_charset.to_i end
+  def parse_wp_optimization(str_opt); return str_opt.to_i end
 end
 
 class V2C_VS7ConfigurationsParser < V2C_VSParserBase
@@ -1565,9 +1562,9 @@ class V2C_VS7FileParser < V2C_VSParserBase
     @arr_source_infos = arr_source_infos_out
   end
   def parse
-    file = V2C_Info_File.new
-    parse_attributes(file)
-    f = file.path_relative # HACK
+    info_file = V2C_Info_File.new
+    parse_attributes(info_file)
+    f = info_file.path_relative # HACK
   
     excluded_from_build = false
     # FIXME: for FileConfiguration, should make use of V2C_VS7ConfigurationParser (or a derived class) as well!!
@@ -1602,7 +1599,7 @@ class V2C_VS7FileParser < V2C_VSParserBase
     }
   
     if not excluded_from_build and included_in_build
-      @arr_source_infos.push(file)
+      @arr_source_infos.push(info_file)
       # HACK:
       if not $have_build_units
         if f =~ /\.(c|C)/
@@ -1611,12 +1608,12 @@ class V2C_VS7FileParser < V2C_VSParserBase
       end
     end
   end
-  def parse_attributes(file)
+  def parse_attributes(info_file)
     @file_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
       case attr_xml.name
       when 'RelativePath'
-        file.path_relative = normalize_path(attr_value)
+        info_file.path_relative = normalize_path(attr_value)
       else
         unknown_element("Filter, attribute #{attr_xml.name}")
       end
@@ -1717,7 +1714,7 @@ class V2C_VS7FilesParser < V2C_VSParserBase
       when 'Name'
         file_group_name = attr_value
       else
-        unknown_element("property group, attribute #{attr_xml.name}")
+        unknown_element("file list, attribute #{attr_xml.name}")
       end
     }
     if file_group_name.nil?
@@ -1784,6 +1781,9 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
       end
     }
   end
+
+  private
+
   def parse_attributes
     @project_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
@@ -1794,9 +1794,7 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
         @target.name = attr_value
       when 'ProjectCreator' # used by Fortran .vfproj ("Intel Fortran")
         @target.creator = attr_value
-      when 'ProjectGUID' # used by Visual C++ .vcproj
-        @target.guid = attr_value
-      when 'ProjectIdGuid' # used by Fortran .vfproj
+      when 'ProjectGUID', 'ProjectIdGuid' # used by Visual C++ .vcproj, Fortran .vfproj
         @target.guid = attr_value
       when 'ProjectType'
         @target.type = attr_value
@@ -1805,26 +1803,34 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
       when 'Version'
         @target.version = attr_value
 
-      # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
-      # exist, too... (one project had SccProvider missing). HOWEVER,
-      # CMake generator does expect all three to exist when available! Hmm.
-      when 'SccProjectName'
-        @target.scc_info.project_name = attr_value
-      # There's a special SAK (Should Already Know) entry marker
-      # (see e.g. http://stackoverflow.com/a/6356615 ).
-      # Currently I don't believe we need to handle "SAK" in special ways
-      # (such as filling it in in case of missing entries),
-      # transparent handling ought to be sufficient.
-      when 'SccLocalPath'
-        @target.scc_info.local_path = attr_value
-      when 'SccProvider'
-        @target.scc_info.provider = attr_value
-      when 'SccAuxPath'
-        @target.scc_info.aux_path = attr_value
+      when /^Scc/
+        parse_attributes_scc(attr_xml.name, attr_value, @target.scc_info)
       else
         unknown_element(attr_xml.name)
       end
     }
+  end
+  def parse_attributes_scc(attr_name, attr_value, scc_info_out)
+    case attr_name
+    # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+    # exist, too... (one project had SccProvider missing). HOWEVER,
+    # CMake generator does expect all three to exist when available! Hmm.
+    when 'SccProjectName'
+      scc_info_out.project_name = attr_value
+    # There's a special SAK (Should Already Know) entry marker
+    # (see e.g. http://stackoverflow.com/a/6356615 ).
+    # Currently I don't believe we need to handle "SAK" in special ways
+    # (such as filling it in in case of missing entries),
+    # transparent handling ought to be sufficient.
+    when 'SccLocalPath'
+      scc_info_out.local_path = attr_value
+    when 'SccProvider'
+      scc_info_out.provider = attr_value
+    when 'SccAuxPath'
+      scc_info_out.aux_path = attr_value
+    else
+      unknown_element(attr_name)
+    end
   end
 end
 
@@ -2181,17 +2187,10 @@ def util_flatten_string(in_string)
   return in_string.gsub(/\s/, '_')
 end
 
-# Hrmm, I'm not quite sure yet where to aggregate this function...
-def cmake_get_config_info_condition_var_name(config_info)
-  # Name may contain spaces - need to handle them!
-  config_name = util_flatten_string(config_info.build_type)
-  return "v2c_want_buildcfg_#{config_name}"
-end
-
 class V2C_CMakeGenerator
-  def initialize(p_script, p_master_project, orig_proj_file_basename, p_generator_proj_file, arr_targets, arr_config_info)
+  def initialize(p_script, p_master_project, p_parser_proj_file, p_generator_proj_file, arr_targets, arr_config_info)
     @p_master_project = p_master_project
-    @orig_proj_file_basename = orig_proj_file_basename
+    @orig_proj_file_basename = p_parser_proj_file.basename
     # figure out a project_dir variable from the generated project file location
     @project_dir = p_generator_proj_file.dirname
     @cmakelists_output_file = p_generator_proj_file.to_s
@@ -2417,6 +2416,15 @@ Finished. You should make sure to have all important v2c settings includes such 
         local_generator.put_var_converter_script_location(@script_location_relative_to_master)
         local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
   end
+
+  private
+
+  # Hrmm, I'm not quite sure yet where to aggregate this function...
+  def cmake_get_config_info_condition_var_name(config_info)
+    # Name may contain spaces - need to handle them!
+    config_name = util_flatten_string(config_info.build_type)
+    return "v2c_want_buildcfg_#{config_name}"
+  end
 end
 
 
@@ -2448,11 +2456,9 @@ def v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_fil
     log_fatal "No project parser found for project file #{parser_project_filename}!?"
   end
 
-  orig_proj_file_basename = p_parser_proj_file.basename
-
   generator = nil
   if true
-    generator = V2C_CMakeGenerator.new(p_script, p_master_project, orig_proj_file_basename, p_generator_proj_file, arr_targets, arr_config_info)
+    generator = V2C_CMakeGenerator.new(p_script, p_master_project, p_parser_proj_file, p_generator_proj_file, arr_targets, arr_config_info)
   end
 
   if not generator.nil?
@@ -2473,5 +2479,3 @@ def v2c_convert_project_outer(project_converter_script_filename, parser_proj_fil
 
   v2c_convert_project_inner(p_script, p_parser_proj_file, p_generator_proj_file, p_master_project)
 end
-
-
