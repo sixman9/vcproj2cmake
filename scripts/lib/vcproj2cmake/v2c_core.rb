@@ -106,18 +106,11 @@ def log_info(str)
   puts str
 end
 
-def log_warn(str)
-  puts "WARNING: #{str}"
-end
+def log_warn(str); puts "WARNING: #{str}" end
 
-def log_error(str)
-  $stderr.puts "ERROR: #{str}"
-end
+def log_error(str); $stderr.puts "ERROR: #{str}" end
 
-def log_fatal(str)
-  log_error "#{str}. Aborting!"
-  exit 1
-end
+def log_fatal(str); log_error "#{str}. Aborting!"; exit 1 end
 
 # Change \ to /, and remove leading ./
 def normalize_path(p)
@@ -410,13 +403,13 @@ class V2C_TextStreamSyntaxGeneratorBase
 end
 
 class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
+  VCPROJ2CMAKE_FUNC_CMAKE = 'vcproj2cmake_func.cmake'
+  V2C_ATTRIBUTE_NOT_PROVIDED_MARKER = 'V2C_NOT_PROVIDED'
   def initialize(out)
     super(out, $v2c_generator_indent_step, $v2c_generated_comments_level)
     @streamout = self # reference to the stream output handler; to be changed into something that is being passed in externally, for the _one_ file that we (and other generators) are working on
 
     # internal CMake generator helpers
-    @vcproj2cmake_func_cmake = 'vcproj2cmake_func.cmake'
-    @v2c_attribute_not_provided_marker = 'V2C_NOT_PROVIDED'
   end
 
   def write_comment_at_level(level, block)
@@ -496,7 +489,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
     write_command_single_line('include', include_file_args)
   end
   def write_vcproj2cmake_func_comment()
-    write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{@vcproj2cmake_func_cmake}")
+    write_comment_at_level(2, "See function implementation/docs in #{$v2c_module_path_root}/#{VCPROJ2CMAKE_FUNC_CMAKE}")
   end
   def write_cmake_policy(policy_num, set_to_new, comment)
     str_policy = '%s%04d' % [ 'CMP', policy_num ]
@@ -757,7 +750,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # _internally_.
     write_vcproj2cmake_func_comment()
     if project_keyword.nil?
-	project_keyword = @v2c_attribute_not_provided_marker
+	project_keyword = V2C_ATTRIBUTE_NOT_PROVIDED_MARKER
     end
     arr_func_args = [ project_name, project_keyword, "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
     write_command_list_quoted('v2c_post_setup', project_name, arr_func_args)
@@ -861,9 +854,7 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
     @parent_source_group = parent_source_group
     @arr_sub_sources_for_parent = arr_sub_sources_for_parent
   end
-  def generate
-    put_file_list_recursive(@files_str, @parent_source_group, @arr_sub_sources_for_parent)
-  end
+  def generate; put_file_list_recursive(@files_str, @parent_source_group, @arr_sub_sources_for_parent) end
   def put_file_list_recursive(files_str, parent_source_group, arr_sub_sources_for_parent)
     group = files_str[:name]
     if not files_str[:arr_sub_filters].nil?
@@ -1209,10 +1200,6 @@ $vs7_prop_var_match_regex = '\\$\\([[:alnum:]_]+\\)'
 
 #Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
 Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
-
-def vs7_get_build_type(config_xml)
-  config_xml.attributes['Name'].split('|')[0]
-end
 
 # See also
 # "How to: Use Environment Variables in a Build"
@@ -1806,6 +1793,8 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
   end
 
   private
+
+  def vs7_get_build_type(config_xml); config_xml.attributes['Name'].split('|')[0] end
 
   def parse_attributes
     @project_xml.attributes.each_attribute { |attr_xml|
