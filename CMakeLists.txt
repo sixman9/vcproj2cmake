@@ -24,17 +24,23 @@ if(v2c_vcproj_load_demo_app)
     if(NOT Subversion_FOUND)
       message(FATAL_ERROR "the .vcproj-based demo application ${_name} needs to be fetched via Subversion, which is not installed - please install a Subversion package!")
     endif(NOT Subversion_FOUND)
-    add_custom_command(OUTPUT "${_dir}"
+    set(stamp_file_checkout_ "${_dir}/svn_checkout_${_name}.stamp")
+    # need to specify stamp file as output and NOT the directory itself
+    # since even an UNSUCCESSFUL svn run (think DNS issues, or so)
+    # would leave that directory created.
+    set(command_output_ "${stamp_file_checkout_}")
+    add_custom_command(OUTPUT "${command_output_}"
       COMMAND "${Subversion_SVN_EXECUTABLE}" checkout "${_repo_url}" "${_dir}"
+      COMMAND "${CMAKE_COMMAND}" -E touch "${stamp_file_checkout_}"
       DEPENDS "${Subversion_SVN_EXECUTABLE}"
       COMMENT "fetching SVN repository of ${_name} into ${_dir}"
     )
-    add_custom_target(svn_checkout_${_name} ALL DEPENDS "${_dir}")
+    add_custom_target(svn_checkout_${_name} ALL DEPENDS "${command_output_}")
   endfunction(v2c_svn_checkout _repo_url _name _dir)
   function(v2c_fetch_demo_app_osdab _demo_app_root_dir)
-    set(demo_app_name "osdab")
-    set(demo_app_repo_url "http://osdab.googlecode.com/svn/trunk/")
-    v2c_svn_checkout("${demo_app_repo_url}" "${demo_app_name}" "${_demo_app_root_dir}")
+    set(demo_app_name_ "osdab")
+    set(demo_app_repo_url_ "http://osdab.googlecode.com/svn/trunk/")
+    v2c_svn_checkout("${demo_app_repo_url_}" "${demo_app_name_}" "${_demo_app_root_dir}")
   endfunction(v2c_fetch_demo_app_osdab _demo_app_root_dir)
 
   function(v2c_fetch_demo_app_sebclient _demo_app_root_dir)
