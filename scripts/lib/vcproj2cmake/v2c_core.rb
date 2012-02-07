@@ -31,6 +31,7 @@ end
 
 class V2C_Core_Plugin_Info_Parser < V2C_Core_Plugin_Info
   def initialize
+    super()
     @parser_name = nil
     @extension_name = nil
   end
@@ -233,6 +234,7 @@ end
 
 class V2C_Info_Include_Dir < V2C_Info_Elem_Base
   def initialize
+    super()
     @dir = String.new
     @attr_after = 0
     @attr_before = 0
@@ -264,32 +266,52 @@ class V2C_Tool_Linker_Info
   attr_accessor :arr_lib_dirs
 end
 
-class V2C_Config_Info
+class V2C_Config_Base_Info
   def initialize
     @build_type = 0 # WARNING: it may contain spaces!
     @platform = 0
-    @type = 0
+    @cfg_type = 0
     @use_of_mfc = 0 # TODO: perhaps make ATL/MFC values an enum?
     @use_of_atl = 0
     @charset = 0 # Simply uses VS7 values for now. TODO: should use our own enum definition or so.
     @whole_program_optimization = 0 # Simply uses VS7 values for now. TODO: should use our own enum definition or so.
+    @use_debug_libs = false
     @arr_compiler_info = Array.new
     @arr_linker_info = Array.new
   end
   attr_accessor :build_type
   attr_accessor :platform
-  attr_accessor :type
+  attr_accessor :cfg_type
   attr_accessor :use_of_mfc
   attr_accessor :use_of_atl
   attr_accessor :charset
   attr_accessor :whole_program_optimization
+  attr_accessor :use_debug_libs
   attr_accessor :arr_compiler_info
   attr_accessor :arr_linker_info
 end
 
+class V2C_Project_Config_Info < V2C_Config_Base_Info
+  def initialize
+    super()
+    @output_dir = nil
+    @intermediate_dir = nil
+  end
+  attr_accessor :output_dir
+  attr_accessor :intermediate_dir
+end
+
+class V2C_File_Config_Info < V2C_Config_Base_Info
+  def initialize
+    super()
+    @excluded_from_build = false
+  end
+  attr_accessor :excluded_from_build
+end
+
 class V2C_Makefile
   def initialize
-    @config_info = V2C_Config_Info.new
+    @config_info = V2C_Project_Config_Info.new
   end
 
   attr_accessor :config_info
@@ -576,10 +598,10 @@ end
 
 class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   def initialize(out)
+    super(out)
     # FIXME: handle arr_config_var_handling appropriately
     # (place the translated CMake commands somewhere suitable)
     @arr_config_var_handling = Array.new
-    super(out)
   end
   def put_file_header
     put_file_header_temporary_marker()
@@ -953,10 +975,10 @@ end
 
 class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   def initialize(target, project_dir, localGenerator, out)
+    super(out)
     @target = target
     @project_dir = project_dir
     @localGenerator = localGenerator
-    super(out)
   end
 
   def put_file_list(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
@@ -1017,7 +1039,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
           # and add a hook to handle them specially.
 
           # see VCProjectEngine ConfigurationTypes enumeration
-    case config_info_curr.type
+    case config_info_curr.cfg_type
     when 1       # typeApplication (.exe)
       target_is_valid = true
       #syntax_generator.write_line("add_executable_vcproj2cmake( #{target.name} WIN32 ${SOURCES} )")
@@ -1047,7 +1069,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     else
     #when 10    # typeGeneric (Makefile) [and possibly other things...]
       # TODO: we _should_ somehow support these project types...
-      log_fatal "Project type #{config_info_curr.type} not supported."
+      log_fatal "Project type #{config_info_curr.cfg_type} not supported."
     end
     write_conditional_end(str_condition_no_target)
 
@@ -1293,8 +1315,11 @@ EOF
 end
 
 class V2C_VSParserBase
-  def unknown_element(elem_name)
-    log_error "unknown/incorrect XML element (#{elem_name})!"
+  def unknown_attribute(name)
+    unknown_something('attribute', name)
+  end
+  def unknown_element(name)
+    unknown_something('element', name)
   end
   def skipped_element_warn(elem_name)
     log_warn "unhandled less important XML element (#{elem_name})!"
@@ -1305,6 +1330,12 @@ class V2C_VSParserBase
       value = true
     end
     return value
+  end
+
+  private
+
+  def unknown_something(something_name, name)
+    log_error "#{self.class.name}: unknown/incorrect XML #{something_name} (#{name})!"
   end
 end
 
@@ -1318,6 +1349,7 @@ end
 
 class V2C_VSProjectParserBase < V2C_VSParserBase
   def initialize(project_xml, target_out, arr_config_info)
+    super()
     @project_xml = project_xml
     @target = target_out
     @arr_config_info = arr_config_info
@@ -1337,6 +1369,7 @@ end
 class V2C_VS7ToolLinkerParser < V2C_VSParserBase
   include V2C_VS7ToolDefines
   def initialize(linker_xml, arr_linker_info_out)
+    super()
     @linker_xml = linker_xml
     @arr_linker_info = arr_linker_info_out
   end
@@ -1380,6 +1413,7 @@ end
 class V2C_VS7ToolCompilerParser < V2C_VSParserBase
   include V2C_VS7ToolDefines
   def initialize(compiler_xml, arr_compiler_info_out)
+    super()
     @compiler_xml = compiler_xml
     @arr_compiler_info = arr_compiler_info_out
   end
@@ -1404,7 +1438,7 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
       when 'PreprocessorDefinitions'
         parse_compiler_preprocessor_definitions(compiler_info.hash_defines, attr_value)
       else
-        unknown_element("ToolCompiler, #{attr_xml.name}")
+        unknown_attribute(attr_xml.name)
       end
     }
   end
@@ -1450,6 +1484,7 @@ end
 
 class V2C_VS7ToolParser < V2C_VSParserBase
   def initialize(tool_xml, config_info_out)
+    super()
     @tool_xml = tool_xml
     @config_info = config_info_out
   end
@@ -1461,7 +1496,7 @@ class V2C_VS7ToolParser < V2C_VSParserBase
     when 'VCLinkerTool'
       elem_parser = V2C_VS7ToolLinkerParser.new(@tool_xml, @config_info.arr_linker_info)
     else
-      unknown_element("Tool Parser, #{toolname}")
+      unknown_element(toolname)
     end
     if not elem_parser.nil?
       elem_parser.parse
@@ -1469,52 +1504,60 @@ class V2C_VS7ToolParser < V2C_VSParserBase
   end
 end
 
-class V2C_VS7ConfigurationParser < V2C_VSParserBase
-  def initialize(config_xml, arr_config_info_out)
+class V2C_VS7ConfigurationBaseParser < V2C_VSParserBase
+  def initialize(config_xml, config_info_out)
+    super()
     @config_xml = config_xml
-    @arr_config_info = arr_config_info_out
+    @config_info = config_info_out
   end
   def parse
-    config_info_curr = V2C_Config_Info.new
-
-    parse_attributes(config_info_curr)
-    parse_elements(config_info_curr)
-    @arr_config_info.push(config_info_curr)
+    res = false
+    parse_attributes(@config_info)
+    parse_elements(@config_info)
+    res = true
+    return res
   end
+
+  private
+
   def parse_attributes(config_info)
     @config_xml.attributes.each_attribute { |attr_xml|
-      attr_value = attr_xml.value
-      case attr_xml.name
-      when 'CharacterSet'
-        config_info.charset = parse_charset(attr_value)
-      when 'ConfigurationType'
-        config_info.type = attr_value.to_i
-      when 'Name'
-        arr_name = attr_value.split('|')
-        config_info.build_type = arr_name[0]
-        config_info.platform = arr_name[1]
-      when 'UseOfMFC'
-        # 0 == no MFC
-        # 1 == static MFC
-        # 2 == shared MFC
-        # VS7 does not seem to use string values (only 0/1/2 integers), while VS10 additionally does.
-        # FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
-        # --> we probably should _not_ switch to case insensitive matching on
-        # attributes (see e.g.
-        # http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
-        # but rather implement version-specific parser classes due to
-        # the differing XML configurations
-        # (e.g. do this via a common base class, then add derived ones
-        # to implement any differences).
-        config_info.use_of_mfc = attr_value.to_i
-      when 'UseOfATL'
-        config_info.use_of_atl = attr_value.to_i
-      when 'WholeProgramOptimization'
-        config_info.whole_program_optimization = parse_wp_optimization(attr_value)
-      else
-        unknown_element(attr_xml.name)
-      end
+      parse_attribute(config_info, attr_xml.name, attr_xml.value)
     }
+  end
+  def parse_attribute_base(config_info, attr_name, attr_value)
+    found = true # be optimistic :)
+    case attr_name
+    when 'CharacterSet'
+      config_info.charset = parse_charset(attr_value)
+    when 'ConfigurationType'
+      config_info.cfg_type = attr_value.to_i
+    when 'Name'
+      arr_name = attr_value.split('|')
+      config_info.build_type = arr_name[0]
+      config_info.platform = arr_name[1]
+    when 'UseOfMFC'
+      # 0 == no MFC
+      # 1 == static MFC
+      # 2 == shared MFC
+      # VS7 does not seem to use string values (only 0/1/2 integers), while VS10 additionally does.
+      # FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
+      # --> we probably should _not_ switch to case insensitive matching on
+      # attributes (see e.g.
+      # http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
+      # but rather implement version-specific parser classes due to
+      # the differing XML configurations
+      # (e.g. do this via a common base class, then add derived ones
+      # to implement any differences).
+      config_info.use_of_mfc = attr_value.to_i
+    when 'UseOfATL'
+      config_info.use_of_atl = attr_value.to_i
+    when 'WholeProgramOptimization'
+      config_info.whole_program_optimization = parse_wp_optimization(attr_value)
+    else
+      found = false
+    end
+    return found
   end
   def parse_elements(config_info)
     @config_xml.elements.each { |elem_xml|
@@ -1530,15 +1573,46 @@ class V2C_VS7ConfigurationParser < V2C_VSParserBase
       end
     }
   end
-
-  private
-
   def parse_charset(str_charset); return str_charset.to_i end
   def parse_wp_optimization(str_opt); return str_opt.to_i end
 end
 
+class V2C_VS7ProjectConfigurationParser < V2C_VS7ConfigurationBaseParser
+  def initialize(config_xml, config_info_out)
+    super(config_xml, config_info_out)
+  end
+
+  private
+
+  def parse_attribute(config_info, attr_name, attr_value)
+    if not parse_attribute_base(config_info, attr_name, attr_value)
+      unknown_attribute(attr_name)
+    end
+  end
+end
+
+class V2C_VS7FileConfigurationParser < V2C_VS7ConfigurationBaseParser
+  def initialize(config_xml, arr_config_info_out)
+    super(config_xml, arr_config_info_out)
+  end
+
+  private
+
+  def parse_attribute(config_info, attr_name, attr_value)
+    if not parse_attribute_base(config_info, attr_name, attr_value)
+      case attr_name
+      when 'ExcludedFromBuild'
+        config_info.excluded_from_build = get_boolean_value(attr_value)
+      else
+        unknown_attribute(attr_name)
+      end
+    end
+  end
+end
+
 class V2C_VS7ConfigurationsParser < V2C_VSParserBase
   def initialize(configs_xml, arr_config_info_out)
+    super()
     @configs_xml = configs_xml
     @arr_config_info = arr_config_info_out
   end
@@ -1547,12 +1621,13 @@ class V2C_VS7ConfigurationsParser < V2C_VSParserBase
       elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'Configuration'
-        elem_parser = V2C_VS7ConfigurationParser.new(elem_xml, @arr_config_info)
+        config_info_curr = V2C_Project_Config_Info.new
+        elem_parser = V2C_VS7ProjectConfigurationParser.new(elem_xml, config_info_curr)
+        if elem_parser.parse
+          @arr_config_info.push(config_info_curr)
+        end
       else
         unknown_element(elem_xml.name)
-      end
-      if not elem_parser.nil?
-        elem_parser.parse
       end
     }
   end
@@ -1567,6 +1642,7 @@ end
 
 class V2C_VS7FileParser < V2C_VSParserBase
   def initialize(project_name, file_xml, arr_source_infos_out)
+    super()
     @project_name = project_name # FIXME remove (file check should be done _after_ parsing!)
     @file_xml = file_xml
     @arr_source_infos = arr_source_infos_out
@@ -1576,27 +1652,25 @@ class V2C_VS7FileParser < V2C_VSParserBase
     parse_attributes(info_file)
     f = info_file.path_relative # HACK
   
-    excluded_from_build = false
-    # FIXME: for FileConfiguration, should make use of V2C_VS7ConfigurationParser (or a derived class) as well!!
+    config_info_curr = nil
     @file_xml.elements.each { |elem_xml|
       case elem_xml.name
       when 'FileConfiguration'
-        elem_xml.attributes.each_attribute { |attr_xml|
-          attr_value = attr_xml.value
-          case attr_xml.name
-          when 'ExcludedFromBuild'
-            excluded_from_build = get_boolean_value(attr_value)
-          else
-            unknown_element("FileConfiguration, attribute #{attr_xml.name}")
-          end
-        }
+	config_info_curr = V2C_File_Config_Info.new
+        elem_parser = V2C_VS7FileConfigurationParser.new(elem_xml, config_info_curr)
+        elem_parser.parse
       else
         unknown_element(elem_xml.name)
       end
     }
+
+    excluded_from_build = false
+    if not config_info_curr.nil? and config_info_curr.excluded_from_build
+      excluded_from_build = true
+    end
   
     # Ignore files which have the ExcludedFromBuild attribute set to TRUE
-    if excluded_from_build
+    if not excluded_from_build
       return # no complex handling, just return
     end
     # Ignore files with custom build steps
@@ -1625,7 +1699,7 @@ class V2C_VS7FileParser < V2C_VSParserBase
       when 'RelativePath'
         info_file.path_relative = normalize_path(attr_value)
       else
-        unknown_element("Filter, attribute #{attr_xml.name}")
+        unknown_attribute(attr_xml.name)
       end
     }
   end
@@ -1633,6 +1707,7 @@ end
 
 class V2C_VS7FilterParser < V2C_VSParserBase
   def initialize(filter_xml, files_str_out)
+    super()
     @filter_xml = filter_xml
     @files_str = files_str_out
   end
@@ -1644,6 +1719,7 @@ end
 
 class V2C_VS7FilesParser < V2C_VSParserBase
   def initialize(files_xml, target_out, files_str_out)
+    super()
     @files_xml = files_xml
     @target = target_out
     @files_str = files_str_out
@@ -1677,7 +1753,7 @@ class V2C_VS7FilesParser < V2C_VSParserBase
           when 'SourceControlFiles'
             val_scfiles = get_boolean_value(attr_value)
           else
-            unknown_element("Filter, attribute #{attr_xml.name}")
+            unknown_attribute(attr_xml.name)
           end
         }
         # skip file filters that have a SourceControlFiles property
@@ -1724,7 +1800,7 @@ class V2C_VS7FilesParser < V2C_VSParserBase
       when 'Name'
         file_group_name = attr_value
       else
-        unknown_element("file list, attribute #{attr_xml.name}")
+        unknown_attribute(attr_xml.name)
       end
     }
     if file_group_name.nil?
@@ -1737,9 +1813,7 @@ end
 
 class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
   def initialize(project_xml, target_out, arr_config_info)
-    @project_xml = project_xml
-    @target = target_out
-    @arr_config_info = arr_config_info
+    super(project_xml, target_out, arr_config_info)
   end
   def parse
     parse_attributes
@@ -1818,7 +1892,7 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
       when /^Scc/
         parse_attributes_scc(attr_xml.name, attr_value, @target.scc_info)
       else
-        unknown_element(attr_xml.name)
+        unknown_attribute(attr_xml.name)
       end
     }
   end
@@ -1841,7 +1915,7 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     when 'SccAuxPath'
       scc_info_out.aux_path = attr_value
     else
-      unknown_element(attr_name)
+      unknown_attribute(attr_name)
     end
   end
 end
@@ -1917,10 +1991,14 @@ end
 # Thus it would probably be useful to create an Ant syntax parser base class
 # and derive MSBuild-specific behaviour from it.
 class V2C_VS10ParserBase < V2C_VSParserBase
+  def initialize
+    super()
+  end
 end
 
 class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
   def initialize(itemgroup_xml, arr_config_info)
+    super()
     @itemgroup_xml = itemgroup_xml
     @arr_config_info = arr_config_info
   end
@@ -1928,7 +2006,7 @@ class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
     @itemgroup_xml.elements.each { |itemgroup_elem_xml|
       case itemgroup_elem_xml.name
       when 'ProjectConfiguration'
-        config_info = V2C_Config_Info.new
+        config_info = V2C_Project_Config_Info.new
         itemgroup_elem_xml.elements.each  { |projcfg_elem_xml|
           case projcfg_elem_xml.name
           when 'Configuration'
@@ -1936,13 +2014,13 @@ class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
           when 'Platform'
             config_info.platform = projcfg_elem_xml.text
           else
-            unknown_element("project config item group, name #{projcfg_elem_xml.name}!")
+            unknown_element(projcfg_elem_xml.name)
           end
 	}
         log_debug "ProjectConfig: build type #{config_info.build_type}, platform #{config_info.platform}"
 	@arr_config_info.push(config_info)
       else
-        unknown_element("project configs item group, name #{itemgroup_elem_xml.name}!")
+        unknown_element(itemgroup_elem_xml.name)
       end
     }
   end
@@ -1957,6 +2035,7 @@ end
 
 class V2C_VS10ItemGroupAnonymousParser < V2C_VS10ParserBase
   def initialize(itemgroup_xml, itemgroup_out)
+    super()
     @itemgroup_xml = itemgroup_xml
     @itemgroup = itemgroup_out
   end
@@ -1967,6 +2046,7 @@ end
 
 class V2C_VS10ItemGroupParser < V2C_VS10ParserBase
   def initialize(itemgroup_xml, target_out, arr_config_info)
+    super()
     @itemgroup_xml = itemgroup_xml
     @target = target_out
     @arr_config_info = arr_config_info
@@ -1981,7 +2061,7 @@ class V2C_VS10ItemGroupParser < V2C_VS10ParserBase
     when nil
       item_group_parser = V2C_VS10ItemGroupAnonymousParser.new(@itemgroup_xml, @target)
     else
-      unknown_element("item group, Label #{itemgroup_label}")
+      unknown_element("Label #{itemgroup_label}")
     end
     if not item_group_parser.nil?
       item_group_parser.parse
@@ -1991,6 +2071,7 @@ end
 
 class V2C_VS10PropertyGroupGlobalsParser < V2C_VS10ParserBase
   def initialize(propgroup_xml, target_out)
+    super()
     @propgroup_xml = propgroup_xml
     @target = target_out
   end
@@ -2014,6 +2095,7 @@ end
 
 class V2C_VS10PropertyGroupParser < V2C_VS10ParserBase
   def initialize(propgroup_xml, target_out)
+    super()
     @propgroup_xml = propgroup_xml
     @target = target_out
   end
@@ -2028,10 +2110,10 @@ class V2C_VS10PropertyGroupParser < V2C_VS10ParserBase
           propgroup_parser = V2C_VS10PropertyGroupGlobalsParser.new(@propgroup_xml, @target)
           propgroup_parser.parse
         else
-          unknown_element("property group, Label #{propgroup_label}")
+          unknown_element("Label #{propgroup_label}")
         end
       else
-        unknown_element("property group, attribute #{attr_xml.name}")
+        unknown_attribute(attr_xml.name)
       end
     }
   end
@@ -2107,10 +2189,14 @@ class V2C_VS10ProjectFileParser < V2C_VSProjectFileParserBase
 end
 
 class V2C_VS10ProjectFiltersParserBase < V2C_VS10ParserBase
+  def initialize
+    super()
+  end
 end
 
 class V2C_VS10ProjectFiltersParser < V2C_VS10ProjectFiltersParserBase
   def initialize(project_filters_xml, target_out, arr_config_info)
+    super()
     @project_filters_xml = project_filters_xml
     @target = target_out
     @arr_config_info = arr_config_info
