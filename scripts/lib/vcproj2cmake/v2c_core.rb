@@ -982,7 +982,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
 
   def put_file_list(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
-    filelist_generator = V2C_CMakeFileListGenerator.new(@out, @project_dir, project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
+    filelist_generator = V2C_CMakeFileListGenerator.new(@out, project_name, @project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
     filelist_generator.generate
   end
   def put_source_vars(arr_sub_source_list_var_names)
