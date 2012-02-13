@@ -877,8 +877,13 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
     @arr_sub_sources_for_parent = arr_sub_sources_for_parent
   end
   def generate; put_file_list_recursive(@files_str, @parent_source_group, @arr_sub_sources_for_parent) end
+
+  # Hrmm, I'm not quite sure yet where to aggregate this function...
+  def get_filter_group_name(filter_info); return filter_info.nil? ? 'COMMON' : filter_info.name; end
+
   def put_file_list_recursive(files_str, parent_source_group, arr_sub_sources_for_parent)
-    group = files_str[:name]
+    group_name = get_filter_group_name(files_str[:filter_info])
+      log_debug "#{self.class.name}: #{group_name}"
     if not files_str[:arr_sub_filters].nil?
       arr_sub_filters = files_str[:arr_sub_filters]
     end
@@ -926,9 +931,9 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
       this_source_group = ''
     else
       if parent_source_group == ''
-        this_source_group = group
+        this_source_group = group_name
       else
-        this_source_group = "#{parent_source_group}\\\\#{group}"
+        this_source_group = "#{parent_source_group}\\\\#{group_name}"
       end
     end
   
@@ -1220,8 +1225,18 @@ require 'rexml/document'
 $vs7_prop_var_scan_regex = '\\$\\(([[:alnum:]_]+)\\)'
 $vs7_prop_var_match_regex = '\\$\\([[:alnum:]_]+\\)'
 
-#Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
-Files_str = Struct.new(:name, :arr_sub_filters, :arr_files)
+class V2C_Info_Filter
+  def initialize
+    @name = nil
+    @attr_scfilter = nil
+    @val_scmfiles = true
+  end
+  attr_accessor :name
+  attr_accessor :attr_scfilter
+  attr_accessor :val_scmfiles
+end
+
+Files_str = Struct.new(:filter_info, :arr_sub_filters, :arr_files)
 
 # See also
 # "How to: Use Environment Variables in a Build"
@@ -1635,8 +1650,10 @@ end
 
 class V2C_Info_File
   def initialize
+    @config_info = nil
     @path_relative = ''
   end
+  attr_accessor :config_info
   attr_accessor :path_relative
 end
 
@@ -1648,10 +1665,11 @@ class V2C_VS7FileParser < V2C_VSParserBase
     @arr_source_infos = arr_source_infos_out
   end
   def parse
+    log_debug "#{self.class.name}: parse"
     info_file = V2C_Info_File.new
     parse_attributes(info_file)
     f = info_file.path_relative # HACK
-  
+
     config_info_curr = nil
     @file_xml.elements.each { |elem_xml|
       case elem_xml.name
@@ -1659,18 +1677,22 @@ class V2C_VS7FileParser < V2C_VSParserBase
 	config_info_curr = V2C_File_Config_Info.new
         elem_parser = V2C_VS7FileConfigurationParser.new(elem_xml, config_info_curr)
         elem_parser.parse
+        info_file.config_info = config_info_curr
       else
         unknown_element(elem_xml.name)
       end
     }
 
+    # FIXME: move these file skipping parts to _generator_ side,
+    # don't skip adding file array entries here!!
+
     excluded_from_build = false
     if not config_info_curr.nil? and config_info_curr.excluded_from_build
       excluded_from_build = true
     end
-  
+
     # Ignore files which have the ExcludedFromBuild attribute set to TRUE
-    if not excluded_from_build
+    if excluded_from_build
       return # no complex handling, just return
     end
     # Ignore files with custom build steps
@@ -1681,7 +1703,7 @@ class V2C_VS7FileParser < V2C_VSParserBase
         return # no complex handling, just return
       end
     }
-  
+
     if not excluded_from_build and included_in_build
       @arr_source_infos.push(info_file)
       # HACK:
@@ -1692,6 +1714,9 @@ class V2C_VS7FileParser < V2C_VSParserBase
       end
     end
   end
+
+  private
+
   def parse_attributes(info_file)
     @file_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
@@ -1706,18 +1731,6 @@ class V2C_VS7FileParser < V2C_VSParserBase
 end
 
 class V2C_VS7FilterParser < V2C_VSParserBase
-  def initialize(filter_xml, files_str_out)
-    super()
-    @filter_xml = filter_xml
-    @files_str = files_str_out
-  end
-  def parse
-  end
-end
-
-
-
-class V2C_VS7FilesParser < V2C_VSParserBase
   def initialize(files_xml, target_out, files_str_out)
     super()
     @files_xml = files_xml
@@ -1725,80 +1738,83 @@ class V2C_VS7FilesParser < V2C_VSParserBase
     @files_str = files_str_out
   end
   def parse
-    parse_file_list_recursive(@target.name, @files_xml, @files_str)
+    res = parse_file_list(@files_xml, @files_str)
     @target.have_build_units = $have_build_units # HACK
+    return res
   end
-  def parse_file_list_recursive(project_name, vcproj_filter_xml, files_str)
+  def parse_file_list(vcproj_filter_xml, files_str)
     parse_file_list_attributes(vcproj_filter_xml, files_str)
-  
+
+    filter_info = files_str[:filter_info]
+    if not filter_info.nil?
+      # skip file filters that have a SourceControlFiles property
+      # that's set to false, i.e. files which aren't under version
+      # control (such as IDL generated files).
+      # This experimental check might be a little rough after all...
+      # yes, FIXME: on Win32, these files likely _should_ get listed
+      # after all. We should probably do a platform check in such
+      # cases, i.e. add support for a file_mappings.txt
+      if filter_info.val_scmfiles == false
+        log_info "#{filter_info.name}: SourceControlFiles set to false, listing generated files? --> skipping!"
+        return false
+      end
+      if not filter_info.name.nil? and filter_info.name == 'Generated Files'
+        # Hmm, how are we supposed to handle Generated Files?
+        # Most likely we _are_ supposed to add such files
+        # and set_property(SOURCE ... GENERATED) on it.
+        log_info "#{filter_info.name}: encountered a filter named Generated Files --> skipping! (FIXME)"
+        return false
+      end
+    end
+
     arr_source_infos = Array.new
     vcproj_filter_xml.elements.each { |elem_xml|
       elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'File'
-        elem_parser = V2C_VS7FileParser.new(project_name, elem_xml, arr_source_infos)
+        log_debug 'FOUND File'
+        elem_parser = V2C_VS7FileParser.new(@target.name, elem_xml, arr_source_infos)
+        elem_parser.parse
       when 'Filter'
-        elem_parser = V2C_VS7FilterParser.new(elem_xml, arr_source_infos)
-        filter_xml = elem_xml # HACK
-        attr_scname = nil
-        val_scfiles = true
-        filter_xml.attributes.each_attribute { |attr_xml|
-          attr_value = attr_xml.value
-          case attr_xml.name
-	  when 'Filter'
-            # TODO: create filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
-            attr_scfilter = attr_value
-          when 'Name'
-            attr_scname = attr_value
-          when 'SourceControlFiles'
-            val_scfiles = get_boolean_value(attr_value)
-          else
-            unknown_attribute(attr_xml.name)
-          end
-        }
-        # skip file filters that have a SourceControlFiles property
-        # that's set to false, i.e. files which aren't under version
-        # control (such as IDL generated files).
-        # This experimental check might be a little rough after all...
-        # yes, FIXME: on Win32, these files likely _should_ get listed
-        # after all. We should probably do a platform check in such
-        # cases, i.e. add support for a file_mappings.txt
-        if val_scfiles == false
-          log_info "#{files_str[:name]}: SourceControlFiles set to false, listing generated files? --> skipping!"
-          next
-        end
-        if not attr_scname.nil? and attr_scname == 'Generated Files'
-          # Hmm, how are we supposed to handle Generated Files?
-          # Most likely we _are_ supposed to add such files
-          # and set_property(SOURCE ... GENERATED) on it.
-          log_info "#{files_str[:name]}: encountered a filter named Generated Files --> skipping! (FIXME)"
-          next
-        end
-        if files_str[:arr_sub_filters].nil?
-          files_str[:arr_sub_filters] = Array.new
-        end
+        log_debug 'FOUND Filter'
         subfiles_str = Files_str.new
-        files_str[:arr_sub_filters].push(subfiles_str)
-        parse_file_list_recursive(project_name, filter_xml, subfiles_str)
+        elem_parser = V2C_VS7FilterParser.new(elem_xml, @target, subfiles_str)
+        if elem_parser.parse
+          if files_str[:arr_sub_filters].nil?
+            files_str[:arr_sub_filters] = Array.new
+          end
+          files_str[:arr_sub_filters].push(subfiles_str)
+        end
       else
         unknown_element(elem_xml.name)
       end
-      if not elem_parser.nil?
-        elem_parser.parse
-      end
     } # |elem_xml|
-  
+
     if not arr_source_infos.empty?
       files_str[:arr_files] = arr_source_infos
     end
+    return true
   end
+
+  private
+
   def parse_file_list_attributes(vcproj_filter_xml, files_str)
+    filter_info = nil
     file_group_name = nil
+    if vcproj_filter_xml.attributes.length
+      filter_info = V2C_Info_Filter.new
+    end
     vcproj_filter_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
       case attr_xml.name
+      when 'Filter'
+        # TODO: create filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
+        filter_info.attr_scfilter = attr_value
       when 'Name'
         file_group_name = attr_value
+        filter_info.name = file_group_name
+      when 'SourceControlFiles'
+        filter_info.val_scmfiles = get_boolean_value(attr_value)
       else
         unknown_attribute(attr_xml.name)
       end
@@ -1806,8 +1822,8 @@ class V2C_VS7FilesParser < V2C_VSParserBase
     if file_group_name.nil?
       file_group_name = 'COMMON'
     end
-    files_str[:name] = file_group_name
-    log_debug "parsing files group #{files_str[:name]}"
+    log_debug "parsing files group #{file_group_name}"
+    files_str[:filter_info] = filter_info
   end
 end
 
@@ -1852,9 +1868,9 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
       case elem_xml.name
       when 'Configurations'
         elem_parser = V2C_VS7ConfigurationsParser.new(elem_xml, @arr_config_info)
-      when 'Files'
+      when 'Files' # "Files" simply appears to be a special "Filter" element without any filter conditions.
         # FIXME: we most likely shouldn't pass a rather global "target" object here! (pass a file info object)
-        elem_parser = V2C_VS7FilesParser.new(elem_xml, @target, $main_files)
+        elem_parser = V2C_VS7FilterParser.new(elem_xml, @target, $main_files)
       when 'Platforms'
         skipped_element_warn(elem_xml.name)
       else
