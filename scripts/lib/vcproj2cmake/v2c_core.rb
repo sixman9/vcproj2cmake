@@ -882,7 +882,8 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
   def get_filter_group_name(filter_info); return filter_info.nil? ? 'COMMON' : filter_info.name; end
 
   def put_file_list_recursive(files_str, parent_source_group, arr_sub_sources_for_parent)
-    group_name = get_filter_group_name(files_str[:filter_info])
+    filter_info = files_str[:filter_info]
+    group_name = get_filter_group_name(filter_info)
       log_debug "#{self.class.name}: #{group_name}"
     if not files_str[:arr_sub_filters].nil?
       arr_sub_filters = files_str[:arr_sub_filters]
@@ -903,7 +904,7 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
         # Verbosely ignore IDL generated files
         if f =~/_(i|p).c$/
           # see file_mappings.txt comment above
-          log_info "#{project_name}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
+          log_info "#{@project_name}::#{f} is an IDL generated file: skipping! FIXME: should be platform-dependent."
           included_in_build = false
           next # no complex handling, just skip
         end
@@ -956,7 +957,17 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
       write_list_quoted(source_files_variable, arr_local_sources)
       # create source_group() of our local files
       if not parent_source_group.nil?
-        write_command_single_line('source_group', "\"#{this_source_group}\" FILES ${#{source_files_variable}}")
+        source_group_args = "\"#{this_source_group}\" "
+        # use filter regex if available: have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
+        filter_regex_str = nil
+        if not filter_info.nil?
+          filter_regex = filter_info.attr_scfilter
+          if not filter_regex.nil?
+            source_group_args += "REGULAR_EXPRESSION \"#{filter_regex}\" "
+          end
+        end
+        source_group_args += "FILES ${#{source_files_variable}}"
+        write_command_single_line('source_group', source_group_args)
       end
     end
     if not source_files_variable.nil? or not arr_my_sub_sources.empty?
@@ -1230,10 +1241,12 @@ class V2C_Info_Filter
     @name = nil
     @attr_scfilter = nil
     @val_scmfiles = true
+    @guid = nil
   end
   attr_accessor :name
   attr_accessor :attr_scfilter
   attr_accessor :val_scmfiles
+  attr_accessor :guid
 end
 
 Files_str = Struct.new(:filter_info, :arr_sub_filters, :arr_files)
@@ -1758,12 +1771,15 @@ class V2C_VS7FilterParser < V2C_VSParserBase
         log_info "#{filter_info.name}: SourceControlFiles set to false, listing generated files? --> skipping!"
         return false
       end
-      if not filter_info.name.nil? and filter_info.name == 'Generated Files'
-        # Hmm, how are we supposed to handle Generated Files?
-        # Most likely we _are_ supposed to add such files
-        # and set_property(SOURCE ... GENERATED) on it.
-        log_info "#{filter_info.name}: encountered a filter named Generated Files --> skipping! (FIXME)"
-        return false
+      if not filter_info.name.nil?
+        # Hrmm, this string match implementation is very open-coded ad-hoc imprecise.
+        if filter_info.name == 'Generated Files' or filter_info.name == 'Generierte Dateien'
+          # Hmm, how are we supposed to handle Generated Files?
+          # Most likely we _are_ supposed to add such files
+          # and set_property(SOURCE ... GENERATED) on it.
+          log_info "#{filter_info.name}: encountered a filter named Generated Files --> skipping! (FIXME)"
+          return false
+        end
       end
     end
 
@@ -1808,13 +1824,14 @@ class V2C_VS7FilterParser < V2C_VSParserBase
       attr_value = attr_xml.value
       case attr_xml.name
       when 'Filter'
-        # TODO: create filter regex if available, then have it generated as source_group(REGULAR_EXPRESSION "regex" ...).
         filter_info.attr_scfilter = attr_value
       when 'Name'
         file_group_name = attr_value
         filter_info.name = file_group_name
       when 'SourceControlFiles'
         filter_info.val_scmfiles = get_boolean_value(attr_value)
+      when 'UniqueIdentifier'
+        filter_info.guid = attr_value
       else
         unknown_attribute(attr_xml.name)
       end
