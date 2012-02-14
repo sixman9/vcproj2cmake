@@ -82,6 +82,13 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     endif(NOT V2C_RUBY_BIN)
   endif(NOT V2C_RUBY_BIN)
 
+  set(v2c_cmakelists_rebuilder_deps_static_list
+    ${root_mappings_files_list}
+    "${v2c_project_exclude_list_file_location}"
+    "${V2C_RUBY_BIN}"
+    # TODO add any other relevant dependencies here
+  )
+
   set(v2c_cmakelists_update_check_stamp_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_check_done.stamp")
 
   if(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD)
@@ -103,21 +110,28 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     set(v2c_update_cmakelists_abort_build_after_update_cleanup_stamp_file "${v2c_stamp_files_dir}/v2c_cmakelists_update_abort_cleanup_done.stamp")
   endif(V2C_CMAKELISTS_REBUILDER_ABORT_AFTER_REBUILD)
 
-  function(v2c_cmakelists_rebuild_recursively _script)
+  function(v2c_cmakelists_rebuild_recursively _v2c_scripts_base_path _v2c_cmakelists_rebuilder_deps_common_list)
     if(TARGET ${v2c_cmakelists_target_rebuild_all_name})
       return() # Nothing left to do...
     endif(TARGET ${v2c_cmakelists_target_rebuild_all_name})
     # Need to manually derive the name of the recursive script...
-    string(REGEX REPLACE "(.*)/vcproj2cmake.rb" "\\1/vcproj2cmake_recursive.rb" script_recursive_ "${_script}")
+    set(script_recursive_ "${_v2c_scripts_base_path}/vcproj2cmake_recursive.rb")
     if(NOT EXISTS "${script_recursive_}")
       return()
     endif(NOT EXISTS "${script_recursive_}")
     message(STATUS "Providing fully recursive CMakeLists.txt rebuilder target ${v2c_cmakelists_target_rebuild_all_name}, to forcibly enact a recursive .vcproj --> CMake reconversion of all source tree sub directories.")
     set(cmakelists_update_recursively_updated_stamp_file_ "${CMAKE_CURRENT_BINARY_DIR}/cmakelists_recursive_converter_done.stamp")
+    set(v2c_cmakelists_rebuilder_deps_recursive_list_
+      ${_v2c_cmakelists_rebuilder_deps_common_list}
+      "${script_recursive_}"
+    )
+    # For now, we'll NOT add the "ALL" marker since this global recursive
+    # target is supposed to be a _forced_, one-time explicitly
+    # user-requested operation.
     add_custom_target(${v2c_cmakelists_target_rebuild_all_name}
       COMMAND "${V2C_RUBY_BIN}" "${script_recursive_}"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-      DEPENDS "${v2c_project_exclude_list_file_location}"
+      DEPENDS ${v2c_cmakelists_rebuilder_deps_recursive_list_}
       COMMENT "Doing recursive .vcproj --> CMakeLists.txt conversion in all source root sub directories."
     )
     # TODO: I wanted to add an extra target as an observer of the excluded projects file,
@@ -133,7 +147,7 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     #)
     #add_custom_target(update_cmakelists_rebuild_recursive_ALL_observer ALL DEPENDS "${cmakelists_update_recursively_updated_observer_stamp_file_}")
     #add_dependencies(update_cmakelists_rebuild_recursive_ALL_observer ${v2c_cmakelists_target_rebuild_all_name})
-  endfunction(v2c_cmakelists_rebuild_recursively _script)
+  endfunction(v2c_cmakelists_rebuild_recursively _v2c_scripts_base_path _v2c_cmakelists_rebuilder_deps_common_list)
 
   # Function to automagically rebuild our converted CMakeLists.txt
   # by the original converter script in case any relevant files changed.
@@ -153,23 +167,25 @@ if(V2C_USE_AUTOMATIC_CMAKELISTS_REBUILDER)
     #file(RELATIVE_PATH _script_rel "${CMAKE_SOURCE_DIR}" "${_script}")
     ##message(FATAL_ERROR "_script ${_script} _script_rel ${_script_rel}")
 
-    # Hrmm, this is a wee bit unclean: since we gather access to the script name
-    # only in case of an invocation of this function, we'll have to invoke the recursive-rebuild function here.
-    v2c_cmakelists_rebuild_recursively("${_script}")
-
-    set(v2c_cmakelists_rebuilder_deps_list_ "${_vcproj_file}" "${_script}")
-    # Collect dependencies for mappings files in both root project and current project
-    file(GLOB proj_mappings_files_list_ "${v2c_mappings_files_expr}")
-    list(APPEND v2c_cmakelists_rebuilder_deps_list_ ${root_mappings_files_list} ${proj_mappings_files_list_})
-    #message("v2c_cmakelists_rebuilder_deps_list_ ${v2c_cmakelists_rebuilder_deps_list_}")
-
+    get_filename_component(v2c_scripts_base_path_ "${_script}" PATH)
+    # This is currently the actual implementation file which will be changed most frequently:
+    set(script_core_ "${v2c_scripts_base_path_}/lib/vcproj2cmake/v2c_core.rb")
     # Need to manually derive the name of the settings script...
-    string(REGEX REPLACE "(.*)/vcproj2cmake.rb" "\\1/vcproj2cmake_settings.rb" script_settings_ "${_script}")
-    if(EXISTS "${script_settings_}")
-      list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${script_settings_}")
-    endif(EXISTS "${script_settings_}")
-    list(APPEND v2c_cmakelists_rebuilder_deps_list_ "${V2C_RUBY_BIN}")
+    set(script_settings_ "${v2c_scripts_base_path_}/vcproj2cmake_settings.rb")
+
+    set(v2c_cmakelists_rebuilder_deps_common_list_ ${v2c_cmakelists_rebuilder_deps_static_list} "${script_core_}" "${script_settings_}")
     # TODO add any other relevant dependencies here
+
+    # Hrmm, this is a wee bit unclean: since we gather access to the script name
+    # only in case of an invocation of this function,
+    # we'll have to invoke the recursive-rebuild function _within_ here, too.
+    v2c_cmakelists_rebuild_recursively("${v2c_scripts_base_path_}" "${v2c_cmakelists_rebuilder_deps_common_list_}")
+
+    # Collect dependencies for mappings files in current project, too:
+    file(GLOB proj_mappings_files_list_ "${v2c_mappings_files_expr}")
+
+    set(v2c_cmakelists_rebuilder_deps_list_ "${_vcproj_file}" "${_script}" ${proj_mappings_files_list_} ${v2c_cmakelists_rebuilder_deps_common_list_})
+    #message(FATAL_ERROR "v2c_cmakelists_rebuilder_deps_list_ ${v2c_cmakelists_rebuilder_deps_list_}")
 
     # Need an intermediate stamp file, otherwise "make clean" will clean
     # our live output file (CMakeLists.txt), yet we crucially need to preserve it
