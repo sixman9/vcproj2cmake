@@ -226,6 +226,7 @@ class V2C_Info_Condition
   end
 end
 
+# @brief Mostly used to manage the condition element...
 class V2C_Info_Elem_Base
   def initialize
     @condition = nil # V2C_Info_Condition
@@ -246,27 +247,46 @@ class V2C_Info_Include_Dir < V2C_Info_Elem_Base
   attr_accessor :attr_system
 end
 
-class V2C_Tool_Compiler_Info
+# Not sure whether we really need this base class -
+# do we really want to know the tool name??
+class V2C_Tool_Base_Info
   def initialize
+    @name = nil
+  end
+  attr_accessor :name
+end
+
+class V2C_Tool_Compiler_Info < V2C_Tool_Base_Info
+  def initialize
+    super()
     @arr_flags = Array.new
     @arr_info_include_dirs = Array.new
     @hash_defines = Hash.new
+    @use_precompiled_header = 0 # known VS10 content is "Create", "Use", "NotUsing"
   end
   attr_accessor :arr_flags
   attr_accessor :arr_info_include_dirs
   attr_accessor :hash_defines
+  attr_accessor :use_precompiled_header
 end
 
-class V2C_Tool_Linker_Info
+class V2C_Tool_Linker_Info < V2C_Tool_Base_Info
   def initialize
+    super()
     @arr_dependencies = Array.new
+    @link_incremental = 0 # 1 means NO, thus 2 probably means YES?
+    @module_definition_file = nil
+    @pdb_file = nil
     @arr_lib_dirs = Array.new
   end
   attr_accessor :arr_dependencies
+  attr_accessor :link_incremental
+  attr_accessor :module_definition_file
+  attr_accessor :pdb_file
   attr_accessor :arr_lib_dirs
 end
 
-class V2C_Config_Base_Info
+class V2C_Config_Base_Info < V2C_Info_Elem_Base
   def initialize
     @build_type = 0 # WARNING: it may contain spaces!
     @platform = 0
@@ -389,7 +409,7 @@ CMAKE_ENV_VAR_MATCH_REGEX = '\\$ENV\\{[[:alnum:]_]+\\}'
 
 # HACK: Since we have several instances of the generator syntax base class,
 # we cannot have indent_now as class member since we'd have multiple
-# disconnected instances... (TODO: add common per-file syntax generator object as member of generator classes)
+# disconnected instances... (TODO: use common per-file syntax generator object - new member of generator classes)
 $indent_now = v2c_generator_indent_num_spaces
 
 # Contains functionality common to _any_ file-based generator
@@ -599,6 +619,7 @@ end
 class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   def initialize(out)
     super(out)
+    @textGenerator = self # useful interim HACK
     # FIXME: handle arr_config_var_handling appropriately
     # (place the translated CMake commands somewhere suitable)
     @arr_config_var_handling = Array.new
@@ -681,6 +702,9 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     #end
     # ok, there's no CMAKE_ATL_FLAG yet, AFAIK, but still prepare
     # for it (also to let people probe on this in hook includes)
+    # FIXME: since this flag does not exist yet yet MFC sort-of
+    # includes ATL configuration, perhaps as a workaround one should
+    # set the MFC flag if use_of_atl is true?
     #if config_info.use_of_atl > 0
       # TODO: should also set the per-configuration-type variable variant
       #write_new_line("set(CMAKE_ATL_FLAG #{config_info.use_of_atl})")
@@ -991,6 +1015,7 @@ end
 class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   def initialize(target, project_dir, localGenerator, out)
     super(out)
+    @textGenerator = self # useful interim HACK
     @target = target
     @project_dir = project_dir
     @localGenerator = localGenerator
@@ -1361,6 +1386,9 @@ class V2C_VSParserBase
   def unknown_element(name)
     unknown_something('element', name)
   end
+  def unknown_element_text(name)
+    unknown_something('element text', name)
+  end
   def skipped_element_warn(elem_name)
     log_warn "unhandled less important XML element (#{elem_name})!"
   end
@@ -1415,38 +1443,67 @@ class V2C_VS7ToolLinkerParser < V2C_VSParserBase
   end
   def parse
     # parse linker configuration...
-    # FIXME case/when switch for individual elements...
     linker_info_curr = V2C_Tool_Linker_Info.new
-    arr_dependencies_curr = linker_info_curr.arr_dependencies
-    read_linker_additional_dependencies(@linker_xml, arr_dependencies_curr)
-    arr_lib_dirs_curr = linker_info_curr.arr_lib_dirs
-    read_linker_additional_library_directories(@linker_xml, arr_lib_dirs_curr)
-    # TODO: support AdditionalOptions! (mention via
-    # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
-    # depending on target type, and make sure to filter out options pre-defined by CMake platform
-    # setup modules)
+    parse_attributes(linker_info_curr)
     @arr_linker_info.push(linker_info_curr)
   end
 
   private
 
-  def read_linker_additional_dependencies(linker_xml, arr_dependencies)
-    attr_deps = linker_xml.attributes['AdditionalDependencies']
-    return if attr_deps.nil? or attr_deps.length == 0
+  def parse_attributes(linker_info)
+    @linker_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'AdditionalDependencies'
+        parse_additional_dependencies(attr_value, linker_info.arr_dependencies)
+      when 'AdditionalLibraryDirectories'
+        parse_additional_library_directories(attr_value, linker_info.arr_lib_dirs)
+      when 'AdditionalOptions'
+        # TODO: support AdditionalOptions! (mention via
+        # CMAKE_SHARED_LINKER_FLAGS / CMAKE_MODULE_LINKER_FLAGS / CMAKE_EXE_LINKER_FLAGS
+        # depending on target type, and make sure to filter out options pre-defined by CMake platform
+        # setup modules)
+        unknown_attribute(attr_xml.name)
+      when 'LinkIncremental'
+        linker_info.link_incremental = parse_link_incremental(attr_value)
+      when 'ModuleDefinitionFile'
+        linker_info.module_definition_file = parse_module_definition_file(attr_value)
+      when 'Name'
+        linker_info.name = attr_value
+      when 'ProgramDatabaseFile'
+        linker_info.pdb_file = parse_pdb_file(attr_value)
+      else
+        unknown_attribute(attr_xml.name)
+      end
+    }
+  end
+  def parse_additional_dependencies(attr_deps, arr_dependencies)
+    return if attr_deps.length == 0
     attr_deps.split.each { |elem_lib_dep|
       elem_lib_dep = normalize_path(elem_lib_dep).strip
-      arr_dependencies.push(File.basename(elem_lib_dep, '.lib'))
+      dependency_name = File.basename(elem_lib_dep, '.lib')
+      arr_dependencies.push(dependency_name)
     }
   end
 
-  def read_linker_additional_library_directories(linker_xml, arr_lib_dirs)
+  def parse_additional_library_directories(attr_libdirs, arr_lib_dirs)
     attr_lib_dirs = linker_xml.attributes['AdditionalLibraryDirectories']
-    return if attr_lib_dirs.nil? or attr_lib_dirs.length == 0
+    return if attr_lib_dirs.length == 0
     attr_lib_dirs.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_lib_dir|
       elem_lib_dir = normalize_path(elem_lib_dir).strip
       #log_info "lib dir is '#{elem_lib_dir}'"
       arr_lib_dirs.push(elem_lib_dir)
     }
+  end
+
+  private
+
+  def parse_link_incremental(str_link_incremental); return str_link_incremental.to_i end
+  def parse_module_definition_file(attr_module_definition_file)
+    return normalize_path(attr_module_definition_file)
+  end
+  def parse_pdb_file(attr_pdb_file)
+    return normalize_path(attr_pdb_file)
   end
 end
 
@@ -1472,17 +1529,21 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
       attr_value = attr_xml.value
       case attr_xml.name
       when 'AdditionalIncludeDirectories'
-        parse_compiler_additional_include_directories(compiler_info, attr_value)
+        parse_additional_include_directories(compiler_info, attr_value)
       when 'AdditionalOptions'
-        parse_compiler_additional_options(compiler_info.arr_flags, attr_value)
+        parse_additional_options(compiler_info.arr_flags, attr_value)
+      when 'Name'
+        compiler_info.name = attr_value
       when 'PreprocessorDefinitions'
-        parse_compiler_preprocessor_definitions(compiler_info.hash_defines, attr_value)
+        parse_preprocessor_definitions(compiler_info.hash_defines, attr_value)
+      when 'UsePrecompiledHeader'
+        compiler_info.use_precompiled_header = parse_use_precompiled_header(attr_value)
       else
         unknown_attribute(attr_xml.name)
       end
     }
   end
-  def parse_compiler_additional_include_directories(compiler_info, attr_incdir)
+  def parse_additional_include_directories(compiler_info, attr_incdir)
     arr_includes = Array.new
     include_dirs = attr_incdir.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_inc_dir|
       elem_inc_dir = normalize_path(elem_inc_dir).strip
@@ -1495,7 +1556,7 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
       compiler_info.arr_info_include_dirs.push(info_inc_dir)
     }
   end
-  def parse_compiler_additional_options(arr_flags, attr_options)
+  def parse_additional_options(arr_flags, attr_options)
     # Oh well, we might eventually want to provide a full-scale
     # translation of various compiler switches to their
     # counterparts on compilers of various platforms, but for
@@ -1509,7 +1570,7 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
     # simply make reverse use of existing translation table in CMake source.
     arr_flags.replace(attr_options.split(';'))
   end
-  def parse_compiler_preprocessor_definitions(hash_defines, attr_defines)
+  def parse_preprocessor_definitions(hash_defines, attr_defines)
     attr_defines.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_define|
       str_define_key, str_define_value = elem_define.strip.split(/=/)
       # Since a Hash will indicate nil for any non-existing key,
@@ -1519,6 +1580,9 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
       end
       hash_defines[str_define_key] = str_define_value
     }
+  end
+  def parse_use_precompiled_header(attr_use_precompiled_header)
+    return attr_use_precompiled_header.to_i
   end
 end
 
@@ -1571,7 +1635,7 @@ class V2C_VS7ConfigurationBaseParser < V2C_VSParserBase
     when 'CharacterSet'
       config_info.charset = parse_charset(attr_value)
     when 'ConfigurationType'
-      config_info.cfg_type = attr_value.to_i
+      config_info.cfg_type = parse_configuration_type(attr_value)
     when 'Name'
       arr_name = attr_value.split('|')
       config_info.build_type = arr_name[0]
@@ -1614,6 +1678,7 @@ class V2C_VS7ConfigurationBaseParser < V2C_VSParserBase
     }
   end
   def parse_charset(str_charset); return str_charset.to_i end
+  def parse_configuration_type(str_configuration_type); return str_configuration_type.to_i end
   def parse_wp_optimization(str_opt); return str_opt.to_i end
 end
 
@@ -2114,6 +2179,95 @@ class V2C_VS10ItemGroupParser < V2C_VS10ParserBase
   end
 end
 
+class V2C_VS10PropertyGroupConfigurationParser < V2C_VS10ParserBase
+  def initialize(propgroup_xml, config_info_out)
+    super()
+    @propgroup_xml = propgroup_xml
+    @config_info = config_info_out
+  end
+  def parse
+    parse_elements(@config_info)
+  end
+  def parse_elements(config_info)
+    @propgroup_xml.elements.each { |elem_xml|
+      parse_element(config_info, elem_xml.name, elem_xml.text)
+    }
+  end
+  def parse_element(config_info, elem_name, elem_text)
+    case elem_name
+    when 'CharacterSet'
+      config_info.charset = parse_charset(elem_text)
+    when 'ConfigurationType'
+      config_info.cfg_type = parse_configuration_type(elem_text)
+    when 'UseOfMfc'
+      config_info.use_of_mfc = parse_use_of_mfc(elem_text)
+    when 'WholeProgramOptimization'
+      config_info.whole_program_optimization = parse_wp_optimization(elem_text)
+    else
+      unknown_element(elem_name)
+    end
+  end
+
+  private
+
+  def parse_charset(str_charset)
+    case str_charset
+    when 'Unicode'
+      return 1
+    when 'MultiByte'
+      return 2
+    else
+      # we're still waiting for value of charSetNotSet
+      # or something else to show up...
+      unknown_element_text(str_charset)
+      return 0
+    end
+  end
+  def parse_configuration_type(str_configuration_type)
+    case str_configuration_type
+    when 'Application'
+      return 1 # typeApplication (.exe)
+    when 'DynamicLibrary'
+      return 2 # typeDynamicLibrary (.dll)
+    when 'StaticLibrary'
+      return 4 # typeStaticLibrary
+    when 'Unknown'
+      return 0 # typeUnknown (utility)
+    else
+      # we're still waiting
+      # for something else to show up...
+      unknown_element_text(str_configuration_type)
+      return 0
+    end
+  end
+  def parse_use_of_mfc(str_use_of_mfc)
+    case str_use_of_mfc
+    when 'Static'
+      return 1
+    when 'Dynamic'
+      return 2
+    when 'false'
+      return 0
+    else
+      # we're still waiting
+      # for something else to show up...
+      unknown_element_text(str_use_of_mfc)
+      return 0
+    end
+  end
+  def parse_wp_optimization(str_opt)
+    case str_opt
+    when 'false'
+      return 0
+    when 'true'
+      return 1
+    else
+      unknown_element_text(str_opt)
+      return 0
+    end
+  end
+end
+
 class V2C_VS10PropertyGroupGlobalsParser < V2C_VS10ParserBase
   def initialize(propgroup_xml, target_out)
     super()
@@ -2164,10 +2318,11 @@ class V2C_VS10PropertyGroupGlobalsParser < V2C_VS10ParserBase
 end
 
 class V2C_VS10PropertyGroupParser < V2C_VS10ParserBase
-  def initialize(propgroup_xml, target_out)
+  def initialize(propgroup_xml, target_out, arr_config_info)
     super()
     @propgroup_xml = propgroup_xml
     @target = target_out
+    @arr_config_info = arr_config_info
   end
   def parse
     @propgroup_xml.attributes.each_attribute { |attr_xml|
@@ -2176,6 +2331,11 @@ class V2C_VS10PropertyGroupParser < V2C_VS10ParserBase
         propgroup_label = attr_xml.value
         log_debug "property group, Label #{propgroup_label}!"
         case propgroup_label
+        when 'Configuration'
+	  config_info_curr = V2C_Project_Config_Info.new
+          propgroup_parser = V2C_VS10PropertyGroupConfigurationParser.new(@propgroup_xml, config_info_curr)
+          propgroup_parser.parse
+          @arr_config_info.push(config_info_curr)
         when 'Globals'
           propgroup_parser = V2C_VS10PropertyGroupGlobalsParser.new(@propgroup_xml, @target)
           propgroup_parser.parse
@@ -2210,7 +2370,7 @@ class V2C_VS10ProjectParser < V2C_VS10ProjectParserBase
       when 'ItemGroup'
         elem_parser = V2C_VS10ItemGroupParser.new(elem_xml, @target, @arr_config_info)
       when 'PropertyGroup'
-        elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target)
+        elem_parser = V2C_VS10PropertyGroupParser.new(elem_xml, @target, @arr_config_info)
       else
         unknown_element(elem_xml.name)
       end
