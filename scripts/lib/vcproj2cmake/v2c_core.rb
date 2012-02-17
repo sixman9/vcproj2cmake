@@ -256,18 +256,31 @@ class V2C_Tool_Base_Info
   attr_accessor :name
 end
 
+class V2C_Tool_Compiler_Specific_Info
+  def initialize(compiler_name)
+    @compiler_name = compiler_name
+    @arr_flags = Array.new
+  end
+  attr_accessor :compiler_name
+  attr_accessor :arr_flags
+end
+
 class V2C_Tool_Compiler_Info < V2C_Tool_Base_Info
   def initialize
     super()
-    @arr_flags = Array.new
     @arr_info_include_dirs = Array.new
     @hash_defines = Hash.new
     @use_precompiled_header = 0 # known VS10 content is "Create", "Use", "NotUsing"
+    @warning_level = 0 # hmm, this is very compiler-specific, thus it should probably be translated into a particular compiler flag value at V2C_Tool_Compiler_Specific_Info
+    @optimization = 0 # currently supporting these values: 0 == Non Debug, 1 == Min Size, 2 == Max Speed, 3 == Max Optimization
+    @arr_compiler_specific_info = Array.new
   end
-  attr_accessor :arr_flags
   attr_accessor :arr_info_include_dirs
   attr_accessor :hash_defines
   attr_accessor :use_precompiled_header
+  attr_accessor :warning_level
+  attr_accessor :optimization
+  attr_accessor :arr_compiler_specific_info
 end
 
 class V2C_Tool_Linker_Info < V2C_Tool_Base_Info
@@ -1486,8 +1499,7 @@ class V2C_VS7ToolLinkerParser < V2C_VSParserBase
     }
   end
 
-  def parse_additional_library_directories(attr_libdirs, arr_lib_dirs)
-    attr_lib_dirs = linker_xml.attributes['AdditionalLibraryDirectories']
+  def parse_additional_library_directories(attr_lib_dirs, arr_lib_dirs)
     return if attr_lib_dirs.length == 0
     attr_lib_dirs.split(/#{VS7_VALUE_SEPARATOR_REGEX}/).each { |elem_lib_dir|
       elem_lib_dir = normalize_path(elem_lib_dir).strip
@@ -1525,23 +1537,29 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
   private
 
   def parse_attributes(compiler_info)
+    compiler_specific = V2C_Tool_Compiler_Specific_Info.new('MSVC7')
     @compiler_xml.attributes.each_attribute { |attr_xml|
       attr_value = attr_xml.value
       case attr_xml.name
       when 'AdditionalIncludeDirectories'
         parse_additional_include_directories(compiler_info, attr_value)
       when 'AdditionalOptions'
-        parse_additional_options(compiler_info.arr_flags, attr_value)
+        parse_additional_options(compiler_specific.arr_flags, attr_value)
       when 'Name'
         compiler_info.name = attr_value
+      when 'Optimization'
+        compiler_info.optimization = attr_value.to_i
       when 'PreprocessorDefinitions'
         parse_preprocessor_definitions(compiler_info.hash_defines, attr_value)
       when 'UsePrecompiledHeader'
         compiler_info.use_precompiled_header = parse_use_precompiled_header(attr_value)
+      when 'WarningLevel'
+        compiler_info.warning_level = attr_value.to_i
       else
         unknown_attribute(attr_xml.name)
       end
     }
+    compiler_info.arr_compiler_specific_info.push(compiler_specific)
   end
   def parse_additional_include_directories(compiler_info, attr_incdir)
     arr_includes = Array.new
@@ -1563,9 +1581,6 @@ class V2C_VS7ToolCompilerParser < V2C_VSParserBase
     # now, let's simply directly pass them on to the compiler when on
     # Win32 platform.
 
-    # I don't think we need this (we have per-target properties), thus we'll NOT write it!
-    #local_generator.write_directory_property_compile_flags(attr_opts)
-  
     # TODO: add translation table for specific compiler flag settings such as MinimalRebuild:
     # simply make reverse use of existing translation table in CMake source.
     arr_flags.replace(attr_options.split(';'))
@@ -2729,7 +2744,18 @@ Finished. You should make sure to have all important v2c settings includes such 
             end
               target_generator.write_property_compile_definitions(config_info_curr.build_type, compiler_info_curr.hash_defines, map_defines)
               # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
-              target_generator.write_property_compile_flags(config_info_curr.build_type, compiler_info_curr.arr_flags, 'MSVC')
+              str_conditional_platform = nil
+              compiler_info_curr.arr_compiler_specific_info.each { |compiler_specific|
+                case compiler_specific.compiler_name
+                when /^MSVC/
+                  str_conditional_platform = 'MSVC'
+                else
+                  log_error "unknown compiler name #{compiler_specific.compiler_name}!"
+                end
+                # I don't think we need this (we have per-target properties), thus we'll NOT write it!
+                #local_generator.write_directory_property_compile_flags(attr_options)
+                target_generator.write_property_compile_flags(config_info_curr.build_type, compiler_specific.arr_flags, str_conditional_platform)
+              }
             }
           }
           syntax_generator.write_conditional_end(str_conditional)
