@@ -764,18 +764,15 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       write_set_var('V2C_SCRIPT_LOCATION', "\"${CMAKE_SOURCE_DIR}/#{script_location_relative_to_master}\"")
     write_conditional_end(str_conditional)
   end
-  def write_func_v2c_post_setup(project_name, project_keyword, orig_project_file_basename)
+  def write_func_v2c_project_post_setup(project_name, orig_project_file_basename)
     # Rationale: keep count of generated lines of CMakeLists.txt to a bare minimum -
-    # call v2c_post_setup(), by simply passing all parameters that are _custom_ data
+    # call v2c_project_post_setup(), by simply passing all parameters that are _custom_ data
     # of the current generated CMakeLists.txt file - all boilerplate handling functionality
-    # that's identical for each project should be implemented by the v2c_post_setup() function
+    # that's identical for each project should be implemented by the v2c_project_post_setup() function
     # _internally_.
     write_vcproj2cmake_func_comment()
-    if project_keyword.nil?
-	project_keyword = V2C_ATTRIBUTE_NOT_PROVIDED_MARKER
-    end
-    arr_func_args = [ project_name, project_keyword, "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
-    write_command_list_quoted('v2c_post_setup', project_name, arr_func_args)
+    arr_func_args = [ "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
+    write_command_list_quoted('v2c_project_post_setup', project_name, arr_func_args)
   end
 
   private
@@ -1174,6 +1171,19 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   def write_link_libraries(arr_dependencies, map_dependencies)
     arr_dependencies.push('${V2C_LIBS}')
     @localGenerator.write_build_attributes('target_link_libraries', arr_dependencies, map_dependencies, @target.name)
+  end
+  def write_func_v2c_target_post_setup(project_name, project_keyword)
+    # Rationale: keep count of generated lines of CMakeLists.txt to a bare minimum -
+    # call v2c_project_post_setup(), by simply passing all parameters that are _custom_ data
+    # of the current generated CMakeLists.txt file - all boilerplate handling functionality
+    # that's identical for each project should be implemented by the v2c_project_post_setup() function
+    # _internally_.
+    write_vcproj2cmake_func_comment()
+    if project_keyword.nil?
+	project_keyword = V2C_ATTRIBUTE_NOT_PROVIDED_MARKER
+    end
+    arr_func_args = [ project_name, project_keyword ]
+    write_command_list_quoted('v2c_target_post_setup', @target.name, arr_func_args)
   end
   def set_properties_vs_scc(scc_info)
     # Keep source control integration in our conversion!
@@ -2566,7 +2576,9 @@ Finished. You should make sure to have all important v2c settings includes such 
         end
   
         if target_is_valid
-  	target_generator.set_properties_vs_scc(target.scc_info)
+          target_generator.write_func_v2c_target_post_setup(target.name, target.vs_keyword)
+
+          target_generator.set_properties_vs_scc(target.scc_info)
   
           # TODO: might want to set a target's FOLDER property, too...
           # (and perhaps a .vcproj has a corresponding attribute
@@ -2576,7 +2588,7 @@ Finished. You should make sure to have all important v2c settings includes such 
         end # target_is_valid
   
         local_generator.put_var_converter_script_location(@script_location_relative_to_master)
-        local_generator.write_func_v2c_post_setup(target.name, target.vs_keyword, orig_proj_file_basename)
+        local_generator.write_func_v2c_project_post_setup(target.name, orig_proj_file_basename)
   end
 
   private
