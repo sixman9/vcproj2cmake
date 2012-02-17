@@ -852,7 +852,7 @@ end
 
 # Hrmm, I'm not quite sure yet where to aggregate this function...
 # (missing some proper generator base class or so...)
-def v2c_generator_validate_file(project_dir, file_relative, project_name)
+def v2c_generator_check_file_accessible(project_dir, file_relative, project_name)
   if $v2c_validate_vcproj_ensure_files_ok
     # TODO: perhaps we need to add a permissions check, too?
     if not File.exist?("#{project_dir}/#{file_relative}")
@@ -881,6 +881,7 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
   # Hrmm, I'm not quite sure yet where to aggregate this function...
   def get_filter_group_name(filter_info); return filter_info.nil? ? 'COMMON' : filter_info.name; end
 
+  # Related TODO item: for .cpp files which happen to be listed as include files in their native projects, we should likely explicitly set the HEADER_FILE_ONLY property (however, man cmakeprops seems to say that CMake will implicitly configure .h files correctly).
   def put_file_list_recursive(files_str, parent_source_group, arr_sub_sources_for_parent)
     filter_info = files_str[:filter_info]
     group_name = get_filter_group_name(filter_info)
@@ -893,7 +894,7 @@ class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
       files_str[:arr_files].each { |file|
         f = file.path_relative
 
-	v2c_generator_validate_file(@project_dir, f, @project_name)
+	v2c_generator_check_file_accessible(@project_dir, f, @project_name)
 
         ## Ignore header files
         #return if f =~ /\.(h|H|lex|y|ico|bmp|txt)$/
@@ -2110,19 +2111,44 @@ class V2C_VS10PropertyGroupGlobalsParser < V2C_VS10ParserBase
   end
   def parse
     @propgroup_xml.elements.each { |propelem_xml|
+      elem_text = propelem_xml.text
       case propelem_xml.name
       when 'Keyword'
-        @target.vs_keyword = propelem_xml.text
+        @target.vs_keyword = elem_text
       when 'ProjectGuid'
-        @target.guid = propelem_xml.text
+        @target.guid = elem_text
       when 'ProjectName'
-        @target.name = propelem_xml.text
+        @target.name = elem_text
       when 'RootNamespace'
-        @target.root_namespace = propelem_xml.text
+        @target.root_namespace = elem_text
+      when /^Scc/
+        parse_elements_scc(propelem_xml.name, elem_text, @target.scc_info)
       else
         unknown_element(propelem_xml.name)
       end
     }
+  end
+  def parse_elements_scc(elem_name, elem_text, scc_info_out)
+    case elem_name
+    # Hrmm, turns out having SccProjectName is no guarantee that both SccLocalPath and SccProvider
+    # exist, too... (one project had SccProvider missing). HOWEVER,
+    # CMake generator does expect all three to exist when available! Hmm.
+    when 'SccProjectName'
+      scc_info_out.project_name = elem_text
+    # There's a special SAK (Should Already Know) entry marker
+    # (see e.g. http://stackoverflow.com/a/6356615 ).
+    # Currently I don't believe we need to handle "SAK" in special ways
+    # (such as filling it in in case of missing entries),
+    # transparent handling ought to be sufficient.
+    when 'SccLocalPath'
+      scc_info_out.local_path = elem_text
+    when 'SccProvider'
+      scc_info_out.provider = elem_text
+    when 'SccAuxPath'
+      scc_info_out.aux_path = elem_text
+    else
+      unknown_element(elem_name)
+    end
   end
 end
 
