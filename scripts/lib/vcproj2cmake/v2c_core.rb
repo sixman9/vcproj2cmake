@@ -867,7 +867,8 @@ def v2c_generator_check_file_accessible(project_dir, file_relative, project_name
   end
 end
 
-class V2C_CMakeFileListGenerator < V2C_CMakeSyntaxGenerator
+# FIXME: temporarily appended a _VS7 suffix since we're currently changing file list generation during our VS10 generator work.
+class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
   def initialize(out, project_name, project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
     super(out)
     @project_name = project_name
@@ -998,8 +999,8 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     @localGenerator = localGenerator
   end
 
-  def put_file_list(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
-    filelist_generator = V2C_CMakeFileListGenerator.new(@out, project_name, @project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
+  def put_file_list_source_group_recursive(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
+    filelist_generator = V2C_CMakeFileListGenerator_VS7.new(@out, project_name, @project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
     filelist_generator.generate
   end
   def put_source_vars(arr_sub_source_list_var_names)
@@ -2476,7 +2477,7 @@ Finished. You should make sure to have all important v2c settings includes such 
   
         # arr_sub_source_list_var_names will receive the names of the individual source list variables:
         arr_sub_source_list_var_names = Array.new
-        target_generator.put_file_list(target.name, main_files, nil, arr_sub_source_list_var_names)
+        target_generator.put_file_list_source_group_recursive(target.name, main_files, nil, arr_sub_source_list_var_names)
   
         if not arr_sub_source_list_var_names.empty?
           # add a ${V2C_SOURCES} variable to the list, to be able to append
