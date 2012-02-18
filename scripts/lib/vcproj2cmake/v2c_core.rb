@@ -2724,11 +2724,11 @@ Finished. You should make sure to have all important v2c settings includes such 
   	  # YES, this condition is supposed to NOT trigger in case of a multi-configuration generator
   	  build_type_condition = "CMAKE_BUILD_TYPE STREQUAL \"#{config_info_curr.build_type}\""
   	end
-  	syntax_generator.write_set_var_bool_conditional(cmake_get_config_info_condition_var_name(config_info_curr), build_type_condition)
+  	syntax_generator.write_set_var_bool_conditional(get_var_name_of_config_info_condition(config_info_curr), build_type_condition)
         }
   
         arr_config_info.each { |config_info_curr|
-  	var_v2c_want_buildcfg_curr = cmake_get_config_info_condition_var_name(config_info_curr)
+  	var_v2c_want_buildcfg_curr = get_var_name_of_config_info_condition(config_info_curr)
   	syntax_generator.write_empty_line()
   	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
   
@@ -2787,7 +2787,7 @@ Finished. You should make sure to have all important v2c settings includes such 
                 when /^MSVC/
                   str_conditional_platform = 'MSVC'
                 else
-                  log_error "unknown compiler name #{compiler_specific.compiler_name}!"
+                  log_error "unknown (unsupported) compiler name #{compiler_specific.compiler_name}!"
                 end
                 # I don't think we need this (we have per-target properties), thus we'll NOT write it!
                 #local_generator.write_directory_property_compile_flags(attr_options)
@@ -2817,7 +2817,7 @@ Finished. You should make sure to have all important v2c settings includes such 
   private
 
   # Hrmm, I'm not quite sure yet where to aggregate this function...
-  def cmake_get_config_info_condition_var_name(config_info)
+  def get_var_name_of_config_info_condition(config_info)
     # Name may contain spaces - need to handle them!
     config_name = util_flatten_string(config_info.build_type)
     return "v2c_want_buildcfg_#{config_name}"
