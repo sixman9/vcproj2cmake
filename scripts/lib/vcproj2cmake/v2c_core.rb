@@ -812,7 +812,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # that's identical for each project should be implemented by the v2c_project_post_setup() function
     # _internally_.
     write_vcproj2cmake_func_comment()
-    arr_func_args = [ "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
+    arr_func_args = [ "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ]
     write_command_list_quoted('v2c_project_post_setup', project_name, arr_func_args)
   end
 
@@ -940,7 +940,7 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
         # No we should NOT ignore header files: if they aren't added to the target,
         # then VS won't display them in the file tree.
         next if f =~ /\.(lex|y|ico|bmp|txt)$/
-  
+
         # Verbosely ignore IDL generated files
         if f =~/_(i|p).c$/
           # see file_mappings.txt comment above
@@ -948,7 +948,7 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
           included_in_build = false
           next # no complex handling, just skip
         end
-  
+
         # Verbosely ignore .lib "sources"
         if f =~ /\.lib$/
           # probably these entries are supposed to serve as dependencies
@@ -960,11 +960,11 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
           included_in_build = false
           return # no complex handling, just return
         end
-  
+
         arr_local_sources.push(f)
       }
     end
-  
+
     # TODO: CMake is said to have a weird bug in case of parent_source_group being "Source Files":
     # "Re: [CMake] SOURCE_GROUP does not function in Visual Studio 8"
     #   http://www.mail-archive.com/cmake@cmake.org/msg05002.html
@@ -977,7 +977,7 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
         this_source_group = "#{parent_source_group}\\\\#{group_name}"
       end
     end
-  
+
     # process sub-filters, have their main source variable added to arr_my_sub_sources
     arr_my_sub_sources = Array.new
     if not arr_sub_filters.nil?
@@ -988,9 +988,9 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
         }
       indent_less()
     end
-  
+
     group_tag = this_source_group.clone.gsub(/( |\\)/,'_')
-  
+
     # process our hierarchy's own files
     if not arr_local_sources.nil?
       source_files_variable = "SOURCES_files_#{group_tag}"
@@ -1944,7 +1944,7 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
     parse_attributes
 
     $have_build_units = false # HACK
-  
+
     $main_files = Files_str.new # HACK global var
 
     @project_xml.elements.each { |elem_xml|
@@ -2558,7 +2558,7 @@ class V2C_CMakeGenerator
         # Close file, since Fileutils.mv on an open file will barf on XP
         out.close
       }
-     
+
       # make sure to close that one as well...
       tmpfile.close
 
@@ -2615,9 +2615,9 @@ Finished. You should make sure to have all important v2c settings includes such 
         if main_files.nil?
           log_fatal 'project has no files!? --> will not generate it'
         end
-  
+
         target_is_valid = false
-  
+
         master_project_dir = p_master_project.to_s
         generator_base = V2C_BaseGlobalGenerator.new(master_project_dir)
         map_lib_dirs = Hash.new
@@ -2626,20 +2626,20 @@ Finished. You should make sure to have all important v2c settings includes such 
         read_mappings_combined(FILENAME_MAP_DEP, map_dependencies, master_project_dir)
         map_defines = Hash.new
         read_mappings_combined(FILENAME_MAP_DEF, map_defines, master_project_dir)
-  
+
         syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
-  
+
         # we likely shouldn't declare this, since for single-configuration
         # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
         # Also, the configuration_types array should be inferred from arr_config_info.
         ## configuration types need to be stated _before_ declaring the project()!
         #syntax_generator.write_empty_line()
         #global_generator.put_configuration_types(configuration_types)
-  
+
         local_generator = V2C_CMakeLocalGenerator.new(out)
-  
+
         local_generator.put_file_header()
-  
+
         # TODO: figure out language type (C CXX etc.) and add it to project() command
         # ok, let's try some initial Q&D handling...
         arr_languages = nil
@@ -2650,25 +2650,25 @@ Finished. You should make sure to have all important v2c settings includes such 
           end
         end
         local_generator.put_project(target.name, arr_languages)
-  
+
         #global_generator = V2C_CMakeGlobalGenerator.new(out)
-  
+
         ## sub projects will inherit, and we _don't_ want that...
         # DISABLED: now to be done by MasterProjectDefaults_vcproj2cmake module if needed
         #syntax_generator.write_line('# reset project-local variables')
         #syntax_generator.write_set_var('V2C_LIBS', '')
         #syntax_generator.write_set_var('V2C_SOURCES', '')
-  
+
         local_generator.put_include_MasterProjectDefaults_vcproj2cmake()
-  
+
         local_generator.put_hook_project()
-  
+
         target_generator = V2C_CMakeTargetGenerator.new(target, @project_dir, local_generator, out)
-  
+
         # arr_sub_source_list_var_names will receive the names of the individual source list variables:
         arr_sub_source_list_var_names = Array.new
         target_generator.put_file_list_source_group_recursive(target.name, main_files, nil, arr_sub_source_list_var_names)
-  
+
         if not arr_sub_source_list_var_names.empty?
           # add a ${V2C_SOURCES} variable to the list, to be able to append
           # all sorts of (auto-generated, ...) files to this list within
@@ -2679,11 +2679,11 @@ Finished. You should make sure to have all important v2c settings includes such 
         else
           log_warn "#{target.name}: no source files at all!? (header-based project?)"
         end
-  
+
         local_generator.put_include_project_source_dir()
-  
+
         target_generator.put_hook_post_sources()
-  
+
         # ARGH, we have an issue with CMake not being fully up to speed with
         # multi-configuration generators (e.g. .vcproj):
         # it should be able to declare _all_ configuration-dependent settings
@@ -2707,7 +2707,7 @@ Finished. You should make sure to have all important v2c settings includes such 
         # Probably the best we can do is to add a function to add to vcproj2cmake_func.cmake which calls either raw include_directories() or sets the future
         # target property, depending on a pre-determined support flag
         # for proper include dirs setting.
-      
+
         if $config_multi_authoritative.empty? # HACK global var
           # Hrmm, we used to fetch this via REXML next_element,
           # which returned the _second_ setting (index 1)
@@ -2715,7 +2715,7 @@ Finished. You should make sure to have all important v2c settings includes such 
           # while we now get the first config, Debug, in that file.
           $config_multi_authoritative = arr_config_info[0].build_type
         end
-  
+
         arr_config_info.each { |config_info_curr|
   	build_type_condition = ''
   	if $config_multi_authoritative == config_info_curr.build_type
@@ -2726,26 +2726,26 @@ Finished. You should make sure to have all important v2c settings includes such 
   	end
   	syntax_generator.write_set_var_bool_conditional(get_var_name_of_config_info_condition(config_info_curr), build_type_condition)
         }
-  
+
         arr_config_info.each { |config_info_curr|
   	var_v2c_want_buildcfg_curr = get_var_name_of_config_info_condition(config_info_curr)
   	syntax_generator.write_empty_line()
   	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
-  
+
   	local_generator.put_cmake_mfc_atl_flag(config_info_curr)
-  
+
   	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
   	  arr_includes = Array.new
   	  compiler_info_curr.arr_info_include_dirs.each { |inc_dir_info|
   	    arr_includes.push(inc_dir_info.dir)
   	  }
-  
+
   	  local_generator.write_include_directories(arr_includes, generator_base.map_includes)
   	}
-  
+
   	# FIXME: hohumm, the position of this hook include is outdated, need to update it
   	target_generator.put_hook_post_definitions()
-  
+
         # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
         # (or, in other words, different configs are capable of generating _different_ target _types_
         # for the _same_ target), but in CMake this isn't possible since _one_ target name
@@ -2754,10 +2754,10 @@ Finished. You should make sure to have all important v2c settings includes such 
         # since other .vcproj file contents always link to our target via the main project name only!!).
         # Thus we need to declare the target _outside_ the scope of per-config handling :(
   	target_is_valid = target_generator.put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
-  
+
   	syntax_generator.write_conditional_end(var_v2c_want_buildcfg_curr)
         } # [END per-config handling]
-  
+
         # Now that we likely _do_ have a valid target
         # (created by at least one of the Debug/Release/... build configs),
         # *iterate through the configs again* and add config-specific
@@ -2797,19 +2797,19 @@ Finished. You should make sure to have all important v2c settings includes such 
           }
           syntax_generator.write_conditional_end(str_conditional)
         end
-  
+
         if target_is_valid
           target_generator.write_func_v2c_target_post_setup(target.name, target.vs_keyword)
 
           target_generator.set_properties_vs_scc(target.scc_info)
-  
+
           # TODO: might want to set a target's FOLDER property, too...
           # (and perhaps a .vcproj has a corresponding attribute
           # which indicates that?)
-  
+
           # TODO: perhaps there are useful Xcode (XCODE_ATTRIBUTE_*) properties to convert?
         end # target_is_valid
-  
+
         local_generator.put_var_converter_script_location(@script_location_relative_to_master)
         local_generator.write_func_v2c_project_post_setup(target.name, orig_proj_file_basename)
   end
