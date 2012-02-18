@@ -304,6 +304,10 @@ class V2C_Config_Base_Info < V2C_Info_Elem_Base
     @build_type = 0 # WARNING: it may contain spaces!
     @platform = 0
     @cfg_type = 0
+
+    # 0 == no MFC
+    # 1 == static MFC
+    # 2 == shared MFC
     @use_of_mfc = 0 # TODO: perhaps make ATL/MFC values an enum?
     @use_of_atl = 0
     @charset = 0 # Simply uses VS7 values for now. TODO: should use our own enum definition or so.
@@ -1405,6 +1409,12 @@ class V2C_VSParserBase
   def skipped_element_warn(elem_name)
     log_warn "unhandled less important XML element (#{elem_name})!"
   end
+  def parser_error(str_description)
+    log_error #{str_description}
+  end
+  def unhandled_functionality(str_description)
+    log_error #{str_description}
+  end
   def get_boolean_value(attr_value)
     value = false
     if not attr_value.nil? and attr_value.downcase == 'true'
@@ -1656,18 +1666,8 @@ class V2C_VS7ConfigurationBaseParser < V2C_VSParserBase
       config_info.build_type = arr_name[0]
       config_info.platform = arr_name[1]
     when 'UseOfMFC'
-      # 0 == no MFC
-      # 1 == static MFC
-      # 2 == shared MFC
       # VS7 does not seem to use string values (only 0/1/2 integers), while VS10 additionally does.
-      # FUTURE NOTE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
-      # --> we probably should _not_ switch to case insensitive matching on
-      # attributes (see e.g.
-      # http://fossplanet.com/f14/rexml-translate-xpath-28868/ ),
-      # but rather implement version-specific parser classes due to
-      # the differing XML configurations
-      # (e.g. do this via a common base class, then add derived ones
-      # to implement any differences).
+      # NOTE SPELLING DIFFERENCE: MSVS7 has UseOfMFC, MSVS10 has UseOfMfc (see CMake MSVS generators)
       config_info.use_of_mfc = attr_value.to_i
     when 'UseOfATL'
       config_info.use_of_atl = attr_value.to_i
@@ -2051,6 +2051,14 @@ class V2C_VSProjectFilesParserBase
     @arr_targets = arr_targets
     @arr_config_info = arr_config_info
   end
+  # Hrmm, that function does not really belong
+  # in this somewhat too specific class...
+  def check_unhandled_file_type(str_ext)
+    str_file = "#{@proj_filename}.#{str_ext}"
+    if File.exists?(str_file)
+      unhandled_functionality("parser does not handle type of file #{str_file} yet!")
+    end
+  end
 end
 
 # Project parser variant which works on XML-stream-based input
@@ -2109,6 +2117,13 @@ class V2C_VS7ProjectFilesParser < V2C_VSProjectFilesParserBase
   def parse
     proj_file_parser = V2C_VS7ProjectFileParser.new(@proj_filename, @arr_targets, @arr_config_info)
     proj_file_parser.parse
+    # FIXME: we don't handle now externally specified (.rules, .vsprops) custom build parts yet!
+    check_unhandled_file_type('rules')
+    check_unhandled_file_type('vsprops')
+    # Well, .user files are called .vcproj.[USERNAME].user,
+    # thus we'd have to do more elaborate lookup...
+    ## Not sure whether we want to evaluate the settings in .user files...
+    #check_unhandled_file_type('user')
   end
 end
 
@@ -2133,11 +2148,12 @@ class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
       when 'ProjectConfiguration'
         config_info = V2C_Project_Config_Info.new
         itemgroup_elem_xml.elements.each  { |projcfg_elem_xml|
+	  elem_text = projcfg_elem_xml.text
           case projcfg_elem_xml.name
           when 'Configuration'
-            config_info.build_type = projcfg_elem_xml.text
+            config_info.build_type = elem_text
           when 'Platform'
-            config_info.platform = projcfg_elem_xml.text
+            config_info.platform = elem_text
           else
             unknown_element(projcfg_elem_xml.name)
           end
@@ -2151,7 +2167,7 @@ class V2C_VS10ItemGroupProjectConfigParser < V2C_VS10ParserBase
   end
 end
 
-class V2C_ItemGroup
+class V2C_ItemGroup_Info
   def initialize
     @label = String.new
     @items = Array.new
@@ -2159,13 +2175,21 @@ class V2C_ItemGroup
 end
 
 class V2C_VS10ItemGroupAnonymousParser < V2C_VS10ParserBase
-  def initialize(itemgroup_xml, itemgroup_out)
+  def initialize(itemgroup_xml, target_out)
     super()
     @itemgroup_xml = itemgroup_xml
-    @itemgroup = itemgroup_out
+    @target = target_out
   end
   def parse
-    puts "FIXME!! V2C_VS10ItemGroupAnonymousParser"
+    @itemgroup_xml.elements.each { |elem_xml|
+      elem_name = elem_xml.name
+      # TODO:
+      #if not @itemgroup.label.nil?
+      #  if not elem_name == @itemgroup.label
+      #    parser_error("item label #{elem_name} does not match group's label #{@itemgroup.label}!?")
+      #  end
+      #end
+    }
   end
 end
 
@@ -2214,8 +2238,10 @@ class V2C_VS10PropertyGroupConfigurationParser < V2C_VS10ParserBase
       config_info.charset = parse_charset(elem_text)
     when 'ConfigurationType'
       config_info.cfg_type = parse_configuration_type(elem_text)
+    when 'UseOfAtl'
+      config_info.use_of_atl = parse_use_of_atl_mfc(elem_text)
     when 'UseOfMfc'
-      config_info.use_of_mfc = parse_use_of_mfc(elem_text)
+      config_info.use_of_mfc = parse_use_of_atl_mfc(elem_text)
     when 'WholeProgramOptimization'
       config_info.whole_program_optimization = parse_wp_optimization(elem_text)
     else
@@ -2255,8 +2281,8 @@ class V2C_VS10PropertyGroupConfigurationParser < V2C_VS10ParserBase
       return 0
     end
   end
-  def parse_use_of_mfc(str_use_of_mfc)
-    case str_use_of_mfc
+  def parse_use_of_atl_mfc(str_use_of_atl_mfc)
+    case str_use_of_atl_mfc
     when 'Static'
       return 1
     when 'Dynamic'
@@ -2266,7 +2292,7 @@ class V2C_VS10PropertyGroupConfigurationParser < V2C_VS10ParserBase
     else
       # we're still waiting
       # for something else to show up...
-      unknown_element_text(str_use_of_mfc)
+      unknown_element_text(str_use_of_atl_mfc)
       return 0
     end
   end
@@ -2450,7 +2476,6 @@ class V2C_VS10ProjectFiltersParser < V2C_VS10ProjectFiltersParserBase
   def parse
     # Do strict traversal over _all_ elements, parse what's supported by us,
     # and yell loudly for any element which we don't know about!
-    # FIXME: VS7 parser should be changed to do the same thing...
     @project_filters_xml.elements.each { |elem_xml|
       elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
@@ -2523,6 +2548,13 @@ class V2C_VS10ProjectFilesParser < V2C_VSProjectFilesParserBase
 
     proj_file_parser.parse
     proj_filters_file_parser.parse
+    # FIXME: we don't handle now externally specified (.props, .targets, .xml files) custom build parts yet!
+    check_unhandled_file_type('props')
+    check_unhandled_file_type('targets')
+    check_unhandled_file_type('xml')
+    # Not sure whether we want to evaluate the settings in .user files...
+    # (.vcxproj.user in VS10)
+    check_unhandled_file_type('user')
   end
 end
 
