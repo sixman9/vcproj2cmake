@@ -1947,31 +1947,6 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
   
     $main_files = Files_str.new # HACK global var
 
-    # ARGH, we have an issue with CMake not being fully up to speed with
-    # multi-configuration generators (e.g. .vcproj):
-    # it should be able to declare _all_ configuration-dependent settings
-    # in a .vcproj file as configuration-dependent variables
-    # (just like set_property(... COMPILE_DEFINITIONS_DEBUG ...)),
-    # but with configuration-specific(!) include directories on .vcproj side,
-    # there's currently only a _generic_ include_directories() command :-(
-    # (dito with target_link_libraries() - or are we supposed to create an imported
-    # target for each dependency, for more precise configuration-specific library names??)
-    # Thus we should specifically specify include_directories() where we can
-    # discern the configuration type (in single-configuration generators using
-    # CMAKE_BUILD_TYPE) and - in the case of multi-config generators - pray
-    # that the authoritative configuration has an AdditionalIncludeDirectories setting
-    # that matches that of all other configs, since we're unable to specify
-    # it in a configuration-specific way :(
-    # Well, in that case we should simply resort to generating
-    # the _union_ of all include directories of all configurations...
-  
-    if $config_multi_authoritative.empty? # HACK global var
-  	  project_configuration_first_xml = @project_xml.elements['Configurations/Configuration'].next_element
-  	  if not project_configuration_first_xml.nil?
-        $config_multi_authoritative = vs7_get_build_type(project_configuration_first_xml)
-  	  end
-    end
-  
     @project_xml.elements.each { |elem_xml|
       elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
@@ -1992,8 +1967,6 @@ class V2C_VS7ProjectParser < V2C_VS7ProjectParserBase
   end
 
   private
-
-  def vs7_get_build_type(config_xml); config_xml.attributes['Name'].split('|')[0] end
 
   def parse_attributes
     @project_xml.attributes.each_attribute { |attr_xml|
@@ -2710,6 +2683,38 @@ Finished. You should make sure to have all important v2c settings includes such 
         local_generator.put_include_project_source_dir()
   
         target_generator.put_hook_post_sources()
+  
+        # ARGH, we have an issue with CMake not being fully up to speed with
+        # multi-configuration generators (e.g. .vcproj):
+        # it should be able to declare _all_ configuration-dependent settings
+        # in a .vcproj file as configuration-dependent variables
+        # (just like set_property(... COMPILE_DEFINITIONS_DEBUG ...)),
+        # but with configuration-specific(!) include directories on .vcproj side,
+        # there's currently only a _generic_ include_directories() command :-(
+        # (dito with target_link_libraries() - or are we supposed to create an imported
+        # target for each dependency, for more precise configuration-specific library names??)
+        # Thus we should specifically specify include_directories() where we can
+        # discern the configuration type (in single-configuration generators using
+        # CMAKE_BUILD_TYPE) and - in the case of multi-config generators - pray
+        # that the authoritative configuration has an AdditionalIncludeDirectories setting
+        # that matches that of all other configs, since we're unable to specify
+        # it in a configuration-specific way :(
+        # Well, in that case we should simply resort to generating
+        # the _union_ of all include directories of all configurations...
+        # "Re: [CMake] debug/optimized include directories"
+        #   http://www.mail-archive.com/cmake@cmake.org/msg38940.html
+        # is a long discussion of this severe issue.
+        # Probably the best we can do is to add a function to add to vcproj2cmake_func.cmake which calls either raw include_directories() or sets the future
+        # target property, depending on a pre-determined support flag
+        # for proper include dirs setting.
+      
+        if $config_multi_authoritative.empty? # HACK global var
+          # Hrmm, we used to fetch this via REXML next_element,
+          # which returned the _second_ setting (index 1)
+          # i.e. Release in a certain file,
+          # while we now get the first config, Debug, in that file.
+          $config_multi_authoritative = arr_config_info[0].build_type
+        end
   
         arr_config_info.each { |config_info_curr|
   	build_type_condition = ''
