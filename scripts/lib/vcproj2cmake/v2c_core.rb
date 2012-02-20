@@ -4,7 +4,7 @@
 $v2c_debug = false
 
 # Initial number of spaces for indenting
-v2c_generator_indent_num_spaces = 0
+$v2c_generator_indent_num_spaces = 0
 
 # Number of spaces to increment by
 $v2c_generator_indent_step = 2
@@ -424,26 +424,25 @@ end
 CMAKE_VAR_MATCH_REGEX = '\\$\\{[[:alnum:]_]+\\}'
 CMAKE_ENV_VAR_MATCH_REGEX = '\\$ENV\\{[[:alnum:]_]+\\}'
 
-# HACK: Since we have several instances of the generator syntax base class,
-# we cannot have indent_now as class member since we'd have multiple
-# disconnected instances... (TODO: use common per-file syntax generator object - new member of generator classes)
-$indent_now = v2c_generator_indent_num_spaces
-
 # Contains functionality common to _any_ file-based generator
 class V2C_TextStreamSyntaxGeneratorBase
-  def initialize(out, indent_step, comments_level)
+  def initialize(out, indent_start, indent_step, comments_level)
     @out = out
+    @indent_now = indent_start
     @indent_step = indent_step
     @comments_level = comments_level
   end
 
   def generated_comments_level; return @comments_level end
 
-  def get_indent; return $indent_now end
+  def get_indent; return @indent_now end
 
-  def indent_more; $indent_now += @indent_step end
-  def indent_less; $indent_now -= @indent_step end
+  def indent_more; @indent_now += @indent_step end
+  def indent_less; @indent_now -= @indent_step end
 
+  def write_data(data)
+    @out.puts data
+  end
   def write_block(block)
     block.split("\n").each { |line|
       write_line(line)
@@ -456,38 +455,41 @@ class V2C_TextStreamSyntaxGeneratorBase
 
   def write_empty_line; @out.puts end
   def write_new_line(part)
-    write_empty_line()
+    @textOut.write_empty_line()
     write_line(part)
   end
 end
 
-class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
+#class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
+class V2C_CMakeSyntaxGenerator
   VCPROJ2CMAKE_FUNC_CMAKE = 'vcproj2cmake_func.cmake'
   V2C_ATTRIBUTE_NOT_PROVIDED_MARKER = 'V2C_NOT_PROVIDED'
-  def initialize(out)
-    super(out, $v2c_generator_indent_step, $v2c_generated_comments_level)
-    @streamout = self # reference to the stream output handler; to be changed into something that is being passed in externally, for the _one_ file that we (and other generators) are working on
-
+  def initialize(textOut)
+    #super(out, $v2c_generator_indent_step, $v2c_generated_comments_level)
+    @textOut = textOut
     # internal CMake generator helpers
   end
 
+  def next_paragraph()
+    @textOut.write_empty_line()
+  end
   def write_comment_at_level(level, block)
-    return if generated_comments_level() < level
+    return if @textOut.generated_comments_level() < level
     block.split("\n").each { |line|
-      write_line("# #{line}")
+      @textOut.write_line("# #{line}")
     }
   end
   def write_command_list(cmake_command, cmake_command_arg, arr_elems)
     if cmake_command_arg.nil?
       cmake_command_arg = ''
     end
-    write_line("#{cmake_command}(#{cmake_command_arg}")
-    indent_more()
+    @textOut.write_line("#{cmake_command}(#{cmake_command_arg}")
+    @textOut.indent_more()
       arr_elems.each do |curr_elem|
-        write_line(curr_elem)
+        @textOut.write_line(curr_elem)
       end
-    indent_less()
-    write_line(')')
+    @textOut.indent_less()
+    @textOut.write_line(')')
   end
   def write_command_list_quoted(cmake_command, cmake_command_arg, arr_elems)
     arr_elems_quoted = Array.new
@@ -499,7 +501,7 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
     write_command_list(cmake_command, cmake_command_arg, arr_elems_quoted)
   end
   def write_command_single_line(cmake_command, cmake_command_args)
-    write_line("#{cmake_command}(#{cmake_command_args})")
+    @textOut.write_line("#{cmake_command}(#{cmake_command_args})")
   end
   def write_list(list_var_name, arr_elems)
     write_command_list('set', list_var_name, arr_elems)
@@ -512,17 +514,17 @@ class V2C_CMakeSyntaxGenerator < V2C_TextStreamSyntaxGeneratorBase
   def write_conditional_if(str_conditional)
     return if str_conditional.nil?
     write_command_single_line('if', str_conditional)
-    indent_more()
+    @textOut.indent_more()
   end
   def write_conditional_else(str_conditional)
     return if str_conditional.nil?
-    indent_less()
+    @textOut.indent_less()
     write_command_single_line('else', str_conditional)
-    indent_more()
+    @textOut.indent_more()
   end
   def write_conditional_end(str_conditional)
     return if str_conditional.nil?
-    indent_less()
+    @textOut.indent_less()
     write_command_single_line('endif', str_conditional)
   end
   def get_keyword_bool(setting); return setting ? 'true' : 'false' end
@@ -634,9 +636,8 @@ class V2C_CMakeGlobalGenerator < V2C_CMakeSyntaxGenerator
 end
 
 class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
-  def initialize(out)
-    super(out)
-    @textGenerator = self # useful interim HACK
+  def initialize(textOut)
+    super(textOut)
     # FIXME: handle arr_config_var_handling appropriately
     # (place the translated CMake commands somewhere suitable)
     @arr_config_var_handling = Array.new
@@ -662,8 +663,8 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     write_command_single_line('project', project_name_and_attrs)
   end
   def put_include_MasterProjectDefaults_vcproj2cmake
-    if generated_comments_level() >= 2
-      @out.puts %{\
+    if @textOut.generated_comments_level() >= 2
+      @textOut.write_data %{\
 
 # this part is for including a file which contains
 # _globally_ applicable settings for all sub projects of a master project
@@ -673,7 +674,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
 # for _all_ CMakeLists.txt. This needs to sit post-project()
 # since e.g. compiler info is dependent on a valid project.
 }
-      write_block( \
+      @textOut.write_block( \
 	"# MasterProjectDefaults_vcproj2cmake is supposed to define generic settings\n" \
         "# (such as V2C_HOOK_PROJECT, defined as e.g.\n" \
         "# #{$v2c_config_dir_local}/hook_project.txt,\n" \
@@ -700,7 +701,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # (for automatic stdafx.h resolution etc.), thus add this
     # (and make sure to add it with high priority, i.e. use BEFORE).
     # For now sitting in LocalGenerator and not per-target handling since this setting is valid for the entire directory.
-    write_empty_line()
+    @textOut.write_empty_line()
     write_command_single_line('include_directories', 'BEFORE "${PROJECT_SOURCE_DIR}"')
   end
   def put_cmake_mfc_atl_flag(config_info)
@@ -762,7 +763,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
   end
   def write_directory_property_compile_flags(attr_opts)
     return if attr_opts.nil?
-    write_empty_line()
+    @textOut.write_empty_line()
     # Query WIN32 instead of MSVC, since AFAICS there's nothing in the
     # .vcproj to indicate tool specifics, thus these seem to
     # be settings for ANY PARTICULAR tool that is configured
@@ -781,7 +782,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       #log_info "arr_platdefs: #{arr_platdefs}"
       next if arr_platdefs.empty?
       arr_platdefs.uniq!
-      write_empty_line()
+      @textOut.write_empty_line()
       str_platform = key if not key.eql?('ALL')
       write_conditional_if(str_platform)
         write_command_list_quoted(cmake_command, cmake_command_arg, arr_platdefs)
@@ -792,7 +793,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # For the CMakeLists.txt rebuilder (automatic rebuild on file changes),
     # add handling of a script file location variable, to enable users
     # to override the script location if needed.
-    write_empty_line()
+    @textOut.write_empty_line()
     write_comment_at_level(1, \
       "user override mechanism (allow defining custom location of script)" \
     )
@@ -824,7 +825,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # particular wording to tell apart generated CMakeLists.txt from
     # custom-written ones, thus one should definitely avoid changing
     # this phrase.
-    @out.puts %{\
+    @textOut.write_data %{\
 #
 # TEMPORARY Build file, AUTO-GENERATED by http://vcproj2cmake.sf.net
 # DO NOT CHECK INTO VERSION CONTROL OR APPLY \"PERMANENT\" MODIFICATIONS!!
@@ -861,7 +862,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # be within the project tree as well, since someone might want to copy the entire project tree
     # including .vcproj conversions to a different machine, thus all v2c components should be available)
     #write_new_line("set(V2C_MASTER_PROJECT_DIR \"#{@master_project_dir}\")")
-    write_empty_line()
+    @textOut.write_empty_line()
     write_set_var('V2C_MASTER_PROJECT_DIR', '"${CMAKE_SOURCE_DIR}"')
     # NOTE: use set() instead of list(APPEND...) to _prepend_ path
     # (otherwise not able to provide proper _overrides_)
@@ -872,7 +873,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     write_set_var('V2C_CONFIG_DIR_LOCAL', "\"#{$v2c_config_dir_local}\"")
   end
   def put_include_vcproj2cmake_func
-    write_empty_line()
+    @textOut.write_empty_line()
     write_comment_at_level(2, \
       "include the main file for pre-defined vcproj2cmake helper functions\n" \
       "This module will also include the configuration settings definitions module" \
@@ -907,8 +908,8 @@ end
 
 # FIXME: temporarily appended a _VS7 suffix since we're currently changing file list generation during our VS10 generator work.
 class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
-  def initialize(out, project_name, project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
-    super(out)
+  def initialize(textOut, project_name, project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
+    super(textOut)
     @project_name = project_name
     @project_dir = project_dir
     @files_str = files_str
@@ -981,12 +982,12 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
     # process sub-filters, have their main source variable added to arr_my_sub_sources
     arr_my_sub_sources = Array.new
     if not arr_sub_filters.nil?
-      indent_more()
+      @textOut.indent_more()
         arr_sub_filters.each { |subfilter|
           #log_info "writing: #{subfilter}"
           put_file_list_recursive(subfilter, this_source_group, arr_my_sub_sources)
         }
-      indent_less()
+      @textOut.indent_less()
     end
 
     group_tag = this_source_group.clone.gsub(/( |\\)/,'_')
@@ -1021,7 +1022,7 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
       if not source_files_variable.nil?
         arr_source_vars.push("${#{source_files_variable}}")
       end
-      write_empty_line()
+      @textOut.write_empty_line()
       write_list_quoted(sources_variable, arr_source_vars)
       # add our source list variable to parent return
       arr_sub_sources_for_parent.push(sources_variable)
@@ -1030,16 +1031,15 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
 end
 
 class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
-  def initialize(target, project_dir, localGenerator, out)
-    super(out)
-    @textGenerator = self # useful interim HACK
+  def initialize(target, project_dir, localGenerator, textOut)
+    super(textOut)
     @target = target
     @project_dir = project_dir
     @localGenerator = localGenerator
   end
 
   def put_file_list_source_group_recursive(project_name, files_str, parent_source_group, arr_sub_sources_for_parent)
-    filelist_generator = V2C_CMakeFileListGenerator_VS7.new(@out, project_name, @project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
+    filelist_generator = V2C_CMakeFileListGenerator_VS7.new(@textOut, project_name, @project_dir, files_str, parent_source_group, arr_sub_sources_for_parent)
     filelist_generator.generate
   end
   def put_source_vars(arr_sub_source_list_var_names)
@@ -1047,12 +1047,12 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     arr_sub_source_list_var_names.each { |sources_elem|
 	arr_source_vars.push("${#{sources_elem}}")
     }
-    write_empty_line()
+    @textOut.write_empty_line()
     write_list_quoted('SOURCES', arr_source_vars)
   end
   def put_hook_post_sources; write_include('${V2C_HOOK_POST_SOURCES}', true) end
   def put_hook_post_definitions
-    write_empty_line()
+    @textOut.write_empty_line()
     write_comment_at_level(1, \
 	"hook include after all definitions have been made\n" \
 	"(but _before_ target is created using the source list!)" \
@@ -1143,17 +1143,17 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
 
   def write_target_library_dynamic
-    write_empty_line()
+    @textOut.write_empty_line()
     write_command_single_line('add_library', "#{@target.name} SHARED ${SOURCES}")
   end
 
   def write_target_library_static
     #write_new_line("add_library_vcproj2cmake( #{target.name} STATIC ${SOURCES} )")
-    write_empty_line()
+    @textOut.write_empty_line()
     write_command_single_line('add_library', "#{@target.name} STATIC ${SOURCES}")
   end
   def put_hook_post_target
-    write_empty_line()
+    @textOut.write_empty_line()
     write_comment_at_level(1, \
       "e.g. to be used for tweaking target properties etc." \
     )
@@ -1196,7 +1196,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       #log_info "arr_platdefs: #{arr_platdefs}"
       next if arr_platdefs.empty?
       arr_platdefs.uniq!
-      write_empty_line()
+      @textOut.write_empty_line()
       str_platform = key if not key.eql?('ALL')
       generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
     }
@@ -1204,7 +1204,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   def write_property_compile_flags(config_name, arr_flags, str_conditional)
     return if arr_flags.empty?
     config_name_upper = get_config_name_upcase(config_name)
-    write_empty_line()
+    @textOut.write_empty_line()
     write_conditional_if(str_conditional)
       cmake_command_arg = "TARGET #{@target.name} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}"
       write_command_list('set_property', cmake_command_arg, arr_flags)
@@ -1264,7 +1264,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       escape_char(scc_info.aux_path, '"')
     end
 
-    write_empty_line()
+    @textOut.write_empty_line()
     write_vcproj2cmake_func_comment()
     arr_func_args = [ scc_info.project_name, scc_info.local_path, scc_info.provider, scc_info.aux_path ]
     write_command_list_quoted('v2c_target_set_properties_vs_scc', @target.name, arr_func_args)
@@ -2627,7 +2627,8 @@ Finished. You should make sure to have all important v2c settings includes such 
         map_defines = Hash.new
         read_mappings_combined(FILENAME_MAP_DEF, map_defines, master_project_dir)
 
-        syntax_generator = V2C_CMakeSyntaxGenerator.new(out)
+	textOut = V2C_TextStreamSyntaxGeneratorBase.new(out, $v2c_generator_indent_num_spaces, $v2c_generator_indent_step, $v2c_generated_comments_level)
+        syntax_generator = V2C_CMakeSyntaxGenerator.new(textOut)
 
         # we likely shouldn't declare this, since for single-configuration
         # generators CMAKE_CONFIGURATION_TYPES shouldn't be set
@@ -2636,7 +2637,7 @@ Finished. You should make sure to have all important v2c settings includes such 
         #syntax_generator.write_empty_line()
         #global_generator.put_configuration_types(configuration_types)
 
-        local_generator = V2C_CMakeLocalGenerator.new(out)
+        local_generator = V2C_CMakeLocalGenerator.new(textOut)
 
         local_generator.put_file_header()
 
@@ -2663,7 +2664,7 @@ Finished. You should make sure to have all important v2c settings includes such 
 
         local_generator.put_hook_project()
 
-        target_generator = V2C_CMakeTargetGenerator.new(target, @project_dir, local_generator, out)
+        target_generator = V2C_CMakeTargetGenerator.new(target, @project_dir, local_generator, textOut)
 
         # arr_sub_source_list_var_names will receive the names of the individual source list variables:
         arr_sub_source_list_var_names = Array.new
@@ -2729,7 +2730,7 @@ Finished. You should make sure to have all important v2c settings includes such 
 
         arr_config_info.each { |config_info_curr|
   	var_v2c_want_buildcfg_curr = get_var_name_of_config_info_condition(config_info_curr)
-  	syntax_generator.write_empty_line()
+  	syntax_generator.next_paragraph()
   	syntax_generator.write_conditional_if(var_v2c_want_buildcfg_curr)
 
   	local_generator.put_cmake_mfc_atl_flag(config_info_curr)
