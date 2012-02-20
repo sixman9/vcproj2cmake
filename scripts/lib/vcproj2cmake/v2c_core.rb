@@ -929,9 +929,9 @@ class V2C_CMakeFileListGenerator_VS7 < V2C_CMakeSyntaxGenerator
     if not files_str[:arr_sub_filters].nil?
       arr_sub_filters = files_str[:arr_sub_filters]
     end
-    if not files_str[:arr_files].nil?
+    if not files_str[:arr_file_infos].nil?
       arr_local_sources = Array.new
-      files_str[:arr_files].each { |file|
+      files_str[:arr_file_infos].each { |file|
         f = file.path_relative
 
 	v2c_generator_check_file_accessible(@project_dir, f, @project_name)
@@ -1059,13 +1059,16 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     )
     write_include('${V2C_HOOK_POST_DEFINITIONS}', true)
   end
+  #def evaluate_precompiled_header_config(target, files_str)
+  #end
+
   # FIXME: not sure whether map_lib_dirs etc. should be passed in in such a raw way -
   # probably mapping should already have been done at that stage...
   def put_target(target, arr_sub_source_list_var_names, map_lib_dirs, map_dependencies, config_info_curr)
     target_is_valid = false
 
     # create a target only in case we do have any meat at all
-    #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
+    #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_file_infos].empty?
     #if not arr_sub_source_list_var_names.empty?
     if target.have_build_units
 
@@ -1296,14 +1299,31 @@ class V2C_Info_Filter
     @attr_scfilter = nil
     @val_scmfiles = true
     @guid = nil
+    @is_sources = false
+    @is_headers = false
+    @is_resources = false
   end
   attr_accessor :name
   attr_accessor :attr_scfilter
   attr_accessor :val_scmfiles
   attr_accessor :guid
+  attr_accessor :is_sources
+  attr_accessor :is_headers
+  attr_accessor :is_resources
+  def get_group_type()
+    if @is_sources
+      return 'sources'
+    elsif @is_headers
+      return 'headers'
+    elsif @is_resources
+      return 'resources'
+    else
+      return 'unknown'
+    end
+  end
 end
 
-Files_str = Struct.new(:filter_info, :arr_sub_filters, :arr_files)
+Files_str = Struct.new(:filter_info, :arr_sub_filters, :arr_file_infos)
 
 # See also
 # "How to: Use Environment Variables in a Build"
@@ -1763,11 +1783,11 @@ class V2C_Info_File
 end
 
 class V2C_VS7FileParser < V2C_VSParserBase
-  def initialize(project_name, file_xml, arr_source_infos_out)
+  def initialize(project_name, file_xml, arr_file_infos_out)
     super()
     @project_name = project_name # FIXME remove (file check should be done _after_ parsing!)
     @file_xml = file_xml
-    @arr_source_infos = arr_source_infos_out
+    @arr_file_infos = arr_file_infos_out
   end
   def parse
     log_debug "#{self.class.name}: parse"
@@ -1810,7 +1830,7 @@ class V2C_VS7FileParser < V2C_VSParserBase
     }
 
     if not excluded_from_build and included_in_build
-      @arr_source_infos.push(info_file)
+      @arr_file_infos.push(info_file)
       # HACK:
       if not $have_build_units
         if f =~ /\.(c|C)/
@@ -1875,13 +1895,13 @@ class V2C_VS7FilterParser < V2C_VSParserBase
       end
     end
 
-    arr_source_infos = Array.new
+    arr_file_infos = Array.new
     vcproj_filter_xml.elements.each { |elem_xml|
       elem_parser = nil # IMPORTANT: reset it!
       case elem_xml.name
       when 'File'
         log_debug 'FOUND File'
-        elem_parser = V2C_VS7FileParser.new(@target.name, elem_xml, arr_source_infos)
+        elem_parser = V2C_VS7FileParser.new(@target.name, elem_xml, arr_file_infos)
         elem_parser.parse
       when 'Filter'
         log_debug 'FOUND Filter'
@@ -1898,8 +1918,8 @@ class V2C_VS7FilterParser < V2C_VSParserBase
       end
     } # |elem_xml|
 
-    if not arr_source_infos.empty?
-      files_str[:arr_files] = arr_source_infos
+    if not arr_file_infos.empty?
+      files_str[:arr_file_infos] = arr_file_infos
     end
     return true
   end
@@ -1924,6 +1944,19 @@ class V2C_VS7FilterParser < V2C_VSParserBase
         filter_info.val_scmfiles = get_boolean_value(attr_value)
       when 'UniqueIdentifier'
         filter_info.guid = attr_value
+        attr_value_upper = attr_value.clone.upcase
+	# TODO: these GUIDs actually seem to be identical between VS7 and VS10,
+	# thus they should be made constants in a common base class...
+	case attr_value_upper
+        when '{4FC737F1-C7A5-4376-A066-2A32D752A2FF}'
+	  filter_info.is_sources = true
+        when '{93995380-89BD-4B04-88EB-625FBE52EBFB}'
+	  filter_info.is_headers = true
+        when '{67DA6AB6-F800-4C08-8B7A-83BB121AAD01}'
+          filter_info.is_resources = true
+        else
+          unknown_attribute("unknown UniqueIdentifier #{attr_value_upper}")
+        end
       else
         unknown_attribute(attr_xml.name)
       end
@@ -1931,7 +1964,7 @@ class V2C_VS7FilterParser < V2C_VSParserBase
     if file_group_name.nil?
       file_group_name = 'COMMON'
     end
-    log_debug "parsing files group #{file_group_name}"
+    log_debug "parsed files group #{file_group_name}, type #{filter_info.get_group_type()}"
     files_str[:filter_info] = filter_info
   end
 end
@@ -2746,6 +2779,8 @@ Finished. You should make sure to have all important v2c settings includes such 
 
   	# FIXME: hohumm, the position of this hook include is outdated, need to update it
   	target_generator.put_hook_post_definitions()
+
+        # TODO: target_generator.evaluate_precompiled_header_config(target.name, main_files)
 
         # Technical note: target type (library, executable, ...) in .vcproj can be configured per-config
         # (or, in other words, different configs are capable of generating _different_ target _types_
