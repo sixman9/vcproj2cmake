@@ -2819,12 +2819,7 @@ Finished. You should make sure to have all important v2c settings includes such 
               # Original compiler flags are MSVC-only, of course. TODO: provide an automatic conversion towards gcc?
               str_conditional_platform = nil
               compiler_info_curr.arr_compiler_specific_info.each { |compiler_specific|
-                case compiler_specific.compiler_name
-                when /^MSVC/
-                  str_conditional_platform = 'MSVC'
-                else
-                  log_error "unknown (unsupported) compiler name #{compiler_specific.compiler_name}!"
-                end
+		str_conditional_platform = map_compiler_name_to_cmake_platform_conditional(compiler_specific.compiler_name)
                 # I don't think we need this (we have per-target properties), thus we'll NOT write it!
                 #local_generator.write_directory_property_compile_flags(attr_options)
                 target_generator.write_property_compile_flags(config_info_curr.build_type, compiler_specific.arr_flags, str_conditional_platform)
@@ -2857,6 +2852,18 @@ Finished. You should make sure to have all important v2c settings includes such 
     # Name may contain spaces - need to handle them!
     config_name = util_flatten_string(config_info.build_type)
     return "v2c_want_buildcfg_#{config_name}"
+  end
+  def map_compiler_name_to_cmake_platform_conditional(compiler_name)
+    str_conditional_platform = nil
+    # For a number of platform indentifier variables,
+    # see "CMake Useful Variables" http://www.cmake.org/Wiki/CMake_Useful_Variables
+    case compiler_name
+    when /^MSVC/
+      str_conditional_platform = 'MSVC'
+    else
+      log_error "unknown (unsupported) compiler name #{compiler_name}!"
+    end
+    return str_conditional_platform
   end
 end
 
