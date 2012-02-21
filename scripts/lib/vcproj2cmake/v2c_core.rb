@@ -275,6 +275,18 @@ class V2C_Tool_Compiler_Info < V2C_Tool_Base_Info
     @optimization = 0 # currently supporting these values: 0 == Non Debug, 1 == Min Size, 2 == Max Speed, 3 == Max Optimization
     @arr_compiler_specific_info = Array.new
   end
+
+  def get_include_dirs(flag_system, flag_before)
+    arr_includes = Array.new
+    arr_info_include_dirs.each { |inc_dir_info|
+      # TODO: evaluate flag_system and flag_before
+      # and collect only those dirs that match these settings
+      # (equivalent to CMake include_directories() SYSTEM / BEFORE).
+      arr_includes.push(inc_dir_info.dir)
+    }  
+    return arr_includes
+  end
+
   attr_accessor :arr_info_include_dirs
   attr_accessor :hash_defines
   attr_accessor :use_precompiled_header
@@ -1061,6 +1073,17 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
   #def evaluate_precompiled_header_config(target, files_str)
   #end
+  #
+  def write_conditional_target_valid_begin
+    write_conditional_if(get_var_conditional_target())
+  end
+  def write_conditional_target_valid_end
+    write_conditional_end(get_var_conditional_target())
+  end
+
+  def get_var_conditional_target()
+    return "TARGET #{@target.name}"
+  end
 
   # FIXME: not sure whether map_lib_dirs etc. should be passed in in such a raw way -
   # probably mapping should already have been done at that stage...
@@ -2769,11 +2792,7 @@ Finished. You should make sure to have all important v2c settings includes such 
   	local_generator.put_cmake_mfc_atl_flag(config_info_curr)
 
   	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-  	  arr_includes = Array.new
-  	  compiler_info_curr.arr_info_include_dirs.each { |inc_dir_info|
-  	    arr_includes.push(inc_dir_info.dir)
-  	  }
-
+	  arr_includes = compiler_info_curr.get_include_dirs(false, false)
   	  local_generator.write_include_directories(arr_includes, generator_base.map_includes)
   	}
 
@@ -2800,8 +2819,7 @@ Finished. You should make sure to have all important v2c settings includes such 
         # definitions. This is necessary (fix for multi-config
         # environment).
         if target_is_valid
-          str_conditional = "TARGET #{target.name}"
-          syntax_generator.write_conditional_if(str_conditional)
+          target_generator.write_conditional_target_valid_begin()
           arr_config_info.each { |config_info_curr|
           # NOTE: the commands below can stay in the general section (outside of
           # var_v2c_want_buildcfg_curr above), but only since they define properties
@@ -2811,6 +2829,12 @@ Finished. You should make sure to have all important v2c settings includes such 
   	# but let's just do it like that for now since it's required
   	# by our current data model:
   	  config_info_curr.arr_compiler_info.each { |compiler_info_curr|
+	    # Hrmm, are we even supposed to be doing this?
+	    # On Windows I guess UseOfMfc in generated VS project files
+	    # would automatically cater for it, and all other platforms
+	    # would have to handle it some way or another anyway.
+	    # But then I guess there are other build environments on Windows
+	    # which would need us handling it here manually, so let's just keep it for now.
             if config_info_curr.use_of_mfc == 2
               compiler_info_curr.hash_defines['_AFXEXT'] = ''
               compiler_info_curr.hash_defines['_AFXDLL'] = ''
@@ -2826,7 +2850,7 @@ Finished. You should make sure to have all important v2c settings includes such 
               }
             }
           }
-          syntax_generator.write_conditional_end(str_conditional)
+          target_generator.write_conditional_target_valid_end()
         end
 
         if target_is_valid
