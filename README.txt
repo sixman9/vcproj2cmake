@@ -235,6 +235,9 @@ than our converter (who knows...), the fact that we are converting
 towards CMake (and thus to a whole universe of supported build environments
 /IDEs via CMake's generators) probably renders any shortcomings
 that we might have rather very moot.
+Plus, sln2mak is C#-based (requiring an awkwardly _disconnected_ conversion
+of Non-Windows-targeted build settings on a Windows box),
+whereas vcproj2cmake is a fully cross-platform-deployable (Ruby) converter.
 
 
 A completely alternative way of gaining cross-platform builds
