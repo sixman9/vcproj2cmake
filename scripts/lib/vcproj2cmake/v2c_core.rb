@@ -1319,24 +1319,29 @@ $vs7_prop_var_match_regex = '\\$\\([[:alnum:]_]+\\)'
 class V2C_Info_Filter
   def initialize
     @name = nil
-    @attr_scfilter = nil
-    @val_scmfiles = true
+    @attr_scfilter = nil # "cpp;c;cc;cxx;..."
+    @val_scmfiles = true # VS7: SourceControlFiles 
     @guid = nil
-    @is_sources = false
-    @is_headers = false
-    @is_resources = false
+    # While these type flags are being directly derived from magic guid values on VS7/VS10
+    # and thus could be considered redundant in these cases,
+    # we'll keep them separate since this implementation is supposed to support
+    # parsers other than VSx, too.
+    @is_compiles = false # VS10: ClCompile element
+    @is_includes = false # VS10: ClInclude element
+    @is_resources = false # VS10: ResourceCompile element
+    @parse_files = true # whether this filter should be parsed (touched) by IntelliSense (or related mechanisms) or not. Probably VS10-only property. Default value true, obviously.
   end
   attr_accessor :name
   attr_accessor :attr_scfilter
   attr_accessor :val_scmfiles
   attr_accessor :guid
-  attr_accessor :is_sources
-  attr_accessor :is_headers
+  attr_accessor :is_compiles
+  attr_accessor :is_includes
   attr_accessor :is_resources
   def get_group_type()
-    if @is_sources
+    if @is_compiles
       return 'sources'
-    elsif @is_headers
+    elsif @is_includes
       return 'headers'
     elsif @is_resources
       return 'resources'
@@ -1972,9 +1977,9 @@ class V2C_VS7FilterParser < V2C_VSParserBase
 	# thus they should be made constants in a common base class...
 	case attr_value_upper
         when '{4FC737F1-C7A5-4376-A066-2A32D752A2FF}'
-	  filter_info.is_sources = true
+	  filter_info.is_compiles = true
         when '{93995380-89BD-4B04-88EB-625FBE52EBFB}'
-	  filter_info.is_headers = true
+	  filter_info.is_includes = true
         when '{67DA6AB6-F800-4C08-8B7A-83BB121AAD01}'
           filter_info.is_resources = true
         else
@@ -2203,6 +2208,39 @@ class V2C_ItemGroup_Info
   end
 end
 
+class V2C_VS10ItemGroupElemFilterParser < V2C_VS10ParserBase
+  def initialize(elem_xml, filter)
+    super()
+    @elem_xml = elem_xml
+    @filter = filter
+  end
+  def parse
+    parse_attributes
+    @elem_xml.elements.each { |elem_xml|
+      elem_text = elem_xml.text
+      case elem_xml.name
+      when 'Extensions'
+	@filter.attr_scfilter = elem_text
+      when 'UniqueIdentifier'
+        @filter.guid = elem_text
+      else
+        unknown_element(elem_xml.name)
+      end
+    }
+  end
+  def parse_attributes
+    @elem_xml.attributes.each_attribute { |attr_xml|
+      attr_value = attr_xml.value
+      case attr_xml.name
+      when 'Include'
+         @filter.name = attr_value
+      else
+        unknown_attribute(attr_xml.name)
+      end
+    }
+  end
+end
+
 class V2C_VS10ItemGroupAnonymousParser < V2C_VS10ParserBase
   def initialize(itemgroup_xml, target_out)
     super()
@@ -2212,6 +2250,14 @@ class V2C_VS10ItemGroupAnonymousParser < V2C_VS10ParserBase
   def parse
     @itemgroup_xml.elements.each { |elem_xml|
       elem_name = elem_xml.name
+      case elem_name
+      when 'Filter'
+        filter = V2C_Info_Filter.new
+        elem_parser = V2C_VS10ItemGroupElemFilterParser.new(elem_xml, filter)
+	elem_parser.parse
+      else
+        unknown_element(elem_name)
+      end
       # TODO:
       #if not @itemgroup.label.nil?
       #  if not elem_name == @itemgroup.label
