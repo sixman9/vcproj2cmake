@@ -218,15 +218,27 @@ end
 #   then generates project files by iterating over the targets via a newly generated target generator each.
 # target generator: generates targets. This is the one creating/producing the output file stream. Not provided by all generators (VS10 yes, VS7 no).
 
+class V2C_Info_Include_Dir
+  def initialize
+    @dir = String.new
+    @attr_after = 0
+    @attr_before = 0
+    @attr_system = 0
+  end
+  attr_accessor :dir
+  attr_accessor :attr_after
+  attr_accessor :attr_before
+  attr_accessor :attr_system
+end
 
 class V2C_Compiler_Info
   def initialize
     @arr_flags = Array.new
-    @arr_includes = Array.new
+    @arr_info_include_dirs = Array.new
     @hash_defines = Hash.new
   end
   attr_accessor :arr_flags
-  attr_accessor :arr_includes
+  attr_accessor :arr_info_include_dirs
   attr_accessor :hash_defines
 end
 
@@ -375,21 +387,35 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
       write_line("# #{line}")
     }
   end
-  def write_command_quoted_list(cmake_command, cmake_command_arg, arr_elems)
+  def write_command_list(cmake_command, cmake_command_arg, arr_elems)
     if cmake_command_arg.nil?
       cmake_command_arg = ''
     end
     write_line("#{cmake_command}(#{cmake_command_arg}")
     indent_more()
-      arr_elems.each do |curr_value|
-        curr_value_quot = element_handle_quoting(curr_value)
-        write_line("#{curr_value_quot}")
+      arr_elems.each do |curr_elem|
+        write_line(curr_elem)
       end
     indent_less()
     write_line(')')
   end
+  def write_command_list_quoted(cmake_command, cmake_command_arg, arr_elems)
+    arr_elems_quoted = Array.new
+    arr_elems.each do |curr_elem|
+      # HACK for nil input of SCC info.
+      curr_elem = '' if curr_elem.nil?
+      arr_elems_quoted.push(element_handle_quoting(curr_elem))
+    end
+    write_command_list(cmake_command, cmake_command_arg, arr_elems_quoted)
+  end
   def write_command_single_line(cmake_command, cmake_command_args)
     write_line("#{cmake_command}(#{cmake_command_args})")
+  end
+  def write_list(list_var_name, arr_elems)
+    write_command_list('set', list_var_name, arr_elems)
+  end
+  def write_list_quoted(list_var_name, arr_elems)
+    write_command_list_quoted('set', list_var_name, arr_elems)
   end
 
   def write_block(block)
@@ -506,7 +532,10 @@ class V2C_CMakeSyntaxGenerator < V2C_TextFileSyntaxGeneratorBase
     # which should NOT be quoted (whereas ${v1} ascii ${v2} should!).
     # As a bandaid to detect variable syntax, make sure to skip
     # closing bracket/dollar sign as well.
-    if elem.match(/[^\}\s]\s|\s[^\s\$]/)
+    # And an empty string needs quoting, too!!
+    # (this empty content might be a counted parameter of a function invocation,
+    # in which case unquoted syntax would implicitly throw away that empty parameter!
+    if elem.match(/[^\}\s]\s|\s[^\s\$]|^$/)
       needs_quoting = true
     end
     if elem.match(/".*"/)
@@ -754,7 +783,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     }
     arr_lib_dirs_translated.push('${V2C_LIB_DIRS}')
     write_comment_at_level(3, \
-      "It is said to be preferable to be able to use target_link_libraries()\n" \
+      "It is said to be much preferable to be able to use target_link_libraries()\n" \
       "rather than the very unspecific link_directories()." \
     )
     write_build_attributes('link_directories', arr_lib_dirs_translated, map_lib_dirs, nil)
@@ -783,7 +812,7 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
       write_empty_line()
       str_platform = key if not key.eql?('ALL')
       write_conditional_if(str_platform)
-        write_command_quoted_list(cmake_command, cmake_command_arg, arr_platdefs)
+        write_command_list_quoted(cmake_command, cmake_command_arg, arr_platdefs)
       write_conditional_end(str_platform)
     }
   end
@@ -795,17 +824,10 @@ class V2C_CMakeLocalGenerator < V2C_CMakeSyntaxGenerator
     # _internally_.
     write_vcproj2cmake_func_comment()
     if project_keyword.nil?
-	project_keyword = "#{@v2c_attribute_not_provided_marker}"
+	project_keyword = @v2c_attribute_not_provided_marker
     end
-    write_line("v2c_post_setup(#{project_name}")
-    indent_more()
-      write_block( \
-        "\"#{project_name}\" \"#{project_keyword}\"\n" \
-        "\"${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}\"\n" \
-        "\"${CMAKE_CURRENT_LIST_FILE}\"" \
-      )
-    indent_less()
-    write_line(')')
+    arr_func_args = [ project_name, project_keyword, "${CMAKE_CURRENT_SOURCE_DIR}/#{orig_project_file_basename}", '${CMAKE_CURRENT_LIST_FILE}' ] 
+    write_command_list_quoted('v2c_post_setup', project_name, arr_func_args)
   end
 end
 
@@ -825,7 +847,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
       arr_local_sources = files_str[:arr_files].clone
     end
   
-    # TODO: cmake is said to have a weird bug in case of parent_source_group being "Source Files":
+    # TODO: CMake is said to have a weird bug in case of parent_source_group being "Source Files":
     # "Re: [CMake] SOURCE_GROUP does not function in Visual Studio 8"
     #   http://www.mail-archive.com/cmake@cmake.org/msg05002.html
     if parent_source_group.nil?
@@ -854,7 +876,7 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     # process our hierarchy's own files
     if not arr_local_sources.nil?
       source_files_variable = "SOURCES_files_#{group_tag}"
-      write_command_quoted_list('set', "#{source_files_variable}", arr_local_sources)
+      write_list_quoted(source_files_variable, arr_local_sources)
       # create source_group() of our local files
       if not parent_source_group.nil?
         write_command_single_line('source_group', "\"#{this_source_group}\" FILES ${#{source_files_variable}}")
@@ -862,30 +884,28 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     end
     if not source_files_variable.nil? or not arr_my_sub_sources.empty?
       sources_variable = "SOURCES_#{group_tag}"
-      write_new_line("set(SOURCES_#{group_tag}")
-      indent_more()
-        # dump sub filters...
-        arr_my_sub_sources.each { |source|
-          write_line("${#{source}}")
-        }
-        # ...then our own files
-        if not source_files_variable.nil?
-          write_line("${#{source_files_variable}}")
-        end
-      indent_less()
-      write_line(')')
+      arr_source_vars = Array.new
+      # dump sub filters...
+      arr_my_sub_sources.each { |sources_elem|
+        arr_source_vars.push("${#{sources_elem}}")
+      }
+      # ...then our own files
+      if not source_files_variable.nil?
+        arr_source_vars.push("${#{source_files_variable}}")
+      end
+      write_empty_line()
+      write_list_quoted(sources_variable, arr_source_vars)
       # add our source list variable to parent return
       arr_sub_sources_for_parent.push(sources_variable)
     end
   end
-  def put_sources(arr_sub_sources)
-    write_new_line('set(SOURCES')
-    indent_more()
-      arr_sub_sources.each { |source_item|
-        write_line("${#{source_item}}")
-      }
-    indent_less()
-    write_line(')')
+  def put_source_vars(arr_sub_source_var_names)
+    arr_source_vars = Array.new
+    arr_sub_source_var_names.each { |sources_elem|
+	arr_source_vars.push("${#{sources_elem}}")
+    }
+    write_empty_line()
+    write_list_quoted('SOURCES', arr_source_vars)
   end
   def write_target_executable
     write_command_single_line('add_executable', "#{@target.name} WIN32 ${SOURCES}")
@@ -903,21 +923,20 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
   end
   def generate_property_compile_definitions(config_name_upper, arr_platdefs, str_platform)
       write_conditional_if(str_platform)
-        # make sure to specify APPEND for greater flexibility (hooks etc.)
-        write_line("set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper}")
-        indent_more()
-          # FIXME: we should probably get rid of sort() here (and elsewhere),
-          # but for now we'll keep it, to retain identically generated files.
-          arr_platdefs.sort.each do |compile_defn|
-    	# Need to escape the value part of the key=value definition:
-            if compile_defn =~ /[\(\)]+/
-               escape_char(compile_defn, '\\(')
-               escape_char(compile_defn, '\\)')
-            end
-            write_line(compile_defn)
+        arr_compile_defn = Array.new
+        # FIXME: we should probably get rid of sort() here (and elsewhere),
+        # but for now we'll keep it, to retain identically generated files.
+        arr_platdefs.sort.each do |compile_defn|
+    	  # Need to escape the value part of the key=value definition:
+          if compile_defn =~ /[\(\)]+/
+            escape_char(compile_defn, '\\(')
+            escape_char(compile_defn, '\\)')
           end
-        indent_less()
-        write_line(')')
+          arr_compile_defn.push(compile_defn)
+        end
+        # make sure to specify APPEND for greater flexibility (hooks etc.)
+        cmake_command_arg = "TARGET #{@target.name} APPEND PROPERTY COMPILE_DEFINITIONS_#{config_name_upper}"
+	write_command_list('set_property', cmake_command_arg, arr_compile_defn)
       write_conditional_end(str_platform)
   end
   def write_property_compile_definitions(config_name, hash_defs, map_defs)
@@ -951,13 +970,8 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
     config_name_upper = get_config_name_upcase(config_name)
     write_empty_line()
     write_conditional_if(str_conditional)
-      write_line("set_property(TARGET #{@target.name} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}")
-      indent_more()
-        arr_flags.each do |compile_flag|
-          write_line(compile_flag)
-        end
-      indent_less()
-      write_line(')')
+      cmake_command_arg = "TARGET #{@target.name} APPEND PROPERTY COMPILE_FLAGS_#{config_name_upper}"
+      write_command_list('set_property', cmake_command_arg, arr_flags)
     write_conditional_end(str_conditional)
   end
   def write_link_libraries(arr_dependencies, map_dependencies)
@@ -1003,7 +1017,8 @@ class V2C_CMakeTargetGenerator < V2C_CMakeSyntaxGenerator
 
     write_empty_line()
     @localGenerator.write_vcproj2cmake_func_comment()
-    write_line("v2c_target_set_properties_vs_scc(#{@target.name} \"#{scc_info.project_name}\" \"#{scc_info.local_path}\" \"#{scc_info.provider}\" \"#{scc_info.aux_path}\")")
+    arr_func_args = [ scc_info.project_name, scc_info.local_path, scc_info.provider, scc_info.aux_path ]
+    write_command_list_quoted('v2c_target_set_properties_vs_scc', @target.name, arr_func_args)
   end
 
   private
@@ -1133,7 +1148,7 @@ def vs7_parse_file(project_name, file_xml, arr_sources)
       if not File.exist?("#{$project_dir}/#{f}")
         log_error "File #{f} as listed in project #{project_name} does not exist!? (perhaps filename with wrong case, or wrong path, ...)"
         if $v2c_validate_vcproj_abort_on_error > 0
-          log_fatal "Improper original file - will abort and NOT write a broken CMakeLists.txt. Please fix .vcproj content!"
+          log_fatal "Improper original file - will abort and NOT generate a broken converted project file. Please fix .vcproj content!"
         end
       end
     end
@@ -1436,7 +1451,13 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
 
         config_xml.elements.each('Tool[@Name="VCCLCompilerTool"]') { |compiler_xml|
 	  compiler_info = V2C_Compiler_Info.new
-	  global_parser.read_compiler_additional_include_directories(compiler_xml, compiler_info.arr_includes)
+	  arr_includes = Array.new
+	  global_parser.read_compiler_additional_include_directories(compiler_xml, arr_includes)
+	  arr_includes.each { |inc_dir|
+	    info_inc_dir = V2C_Info_Include_Dir.new
+	    info_inc_dir.dir = inc_dir
+	    compiler_info.arr_info_include_dirs.push(info_inc_dir)
+	  }
 
 	  global_parser.read_compiler_preprocessor_definitions(compiler_xml, compiler_info.hash_defines)
           if config_info_curr.use_of_mfc == 2
@@ -1462,7 +1483,7 @@ def project_parse_vs7(proj_filename, arr_targets, arr_config_info)
 	  config_info_curr.arr_compiler_info.push(compiler_info)
         }
 
-        #if not arr_sub_sources.empty?
+        #if not arr_sub_source_var_names.empty?
         if target.have_build_units
 	  # parse linker configuration...
           config_xml.elements.each('Tool[@Name="VCLinkerTool"]') { |linker_xml|
@@ -1500,9 +1521,6 @@ end
 # NOTE: VS10 == MSBuild == somewhat Ant-based.
 # Thus it would probably be useful to create an Ant syntax parser base class
 # and derive MSBuild-specific behaviour from it.
-class V2C_VS10Parser
-end
-
 class V2C_VS10ParserBase < V2C_VSParserBase
 end
 
@@ -1844,16 +1862,16 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 
       target_generator = V2C_CMakeTargetGenerator.new(target, local_generator, out)
 
-      arr_sub_sources = Array.new
-      target_generator.put_file_list(target.name, main_files, nil, arr_sub_sources)
+      arr_sub_source_var_names = Array.new
+      target_generator.put_file_list(target.name, main_files, nil, arr_sub_source_var_names)
 
-      if not arr_sub_sources.empty?
+      if not arr_sub_source_var_names.empty?
         # add a ${V2C_SOURCES} variable to the list, to be able to append
         # all sorts of (auto-generated, ...) files to this list within
         # hook includes.
 	# - _right before_ creating the target with its sources
 	# - and not earlier since earlier .vcproj-defined variables should be clean (not be made to contain V2C_SOURCES contents yet)
-        arr_sub_sources.push('V2C_SOURCES')
+        arr_sub_source_var_names.push('V2C_SOURCES')
       else
         log_warn "#{target.name}: no source files at all!? (header-based project?)"
       end
@@ -1881,7 +1899,12 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 	global_generator.put_cmake_mfc_atl_flag(config_info_curr)
 
 	config_info_curr.arr_compiler_info.each { |compiler_info_curr|
-	  local_generator.write_include_directories(compiler_info_curr.arr_includes, generator_base.map_includes)
+	  arr_includes = Array.new
+	  compiler_info_curr.arr_info_include_dirs.each { |inc_dir_info|
+	    arr_includes.push(inc_dir_info.dir)
+	  }
+
+	  local_generator.write_include_directories(arr_includes, generator_base.map_includes)
 	}
 
 	# FIXME: hohumm, the position of this hook include is outdated, need to update it
@@ -1889,15 +1912,15 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 
         # create a target only in case we do have any meat at all
         #if not main_files[:arr_sub_filters].empty? or not main_files[:arr_files].empty?
-        #if not arr_sub_sources.empty?
+        #if not arr_sub_source_var_names.empty?
         if target.have_build_units
 
           # first add source reference, then do linker setup, then create target
 
-	  target_generator.put_sources(arr_sub_sources)
+	  target_generator.put_source_vars(arr_sub_source_var_names)
 
 	  # write link_directories() (BEFORE establishing a target!)
-	  config_info_curr.arr_linker_info.each { | linker_info_curr|
+	  config_info_curr.arr_linker_info.each { |linker_info_curr|
 	    local_generator.write_link_directories(linker_info_curr.arr_lib_dirs, map_lib_dirs)
 	  }
 
@@ -1948,11 +1971,11 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
 
 	  # write target_link_libraries() in case there's a valid target
           if target_is_valid
-	    config_info_curr.arr_linker_info.each { | linker_info_curr|
+	    config_info_curr.arr_linker_info.each { |linker_info_curr|
 	      target_generator.write_link_libraries(linker_info_curr.arr_dependencies, map_dependencies)
 	    }
           end # target_is_valid
-        end # not arr_sub_sources.empty?
+        end # not arr_sub_source_var_names.empty?
 
 	global_generator.put_hook_post_target()
 
@@ -1967,7 +1990,7 @@ def project_generate_cmake(orig_proj_file_basename, out, target, main_files, arr
       if target_is_valid
         str_conditional = "TARGET #{target.name}"
         syntax_generator.write_conditional_if(str_conditional)
-      arr_config_info.each { |config_info_curr|
+        arr_config_info.each { |config_info_curr|
         # NOTE: the commands below can stay in the general section (outside of
         # var_v2c_want_buildcfg_curr above), but only since they define properties
         # which are clearly named as being configuration-_specific_ already!
